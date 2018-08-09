@@ -31,6 +31,7 @@
 #include <drm/drm_plane_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_writeback.h>
+#include <drm/drm_damage_helper.h>
 #include <linux/dma-fence.h>
 
 #include "drm_crtc_helper_internal.h"
@@ -867,6 +868,8 @@ drm_atomic_helper_check_planes(struct drm_device *dev,
 		funcs = plane->helper_private;
 
 		drm_atomic_helper_plane_changed(state, old_plane_state, new_plane_state, plane);
+
+		drm_atomic_helper_check_plane_damage(state, new_plane_state);
 
 		if (!funcs || !funcs->atomic_check)
 			continue;
