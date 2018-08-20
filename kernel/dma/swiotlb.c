@@ -650,6 +650,34 @@ static dma_addr_t swiotlb_bounce_page(struct device *dev, phys_addr_t *phys,
 	return dma_addr;
 }
 
+static dma_addr_t swiotlb_bounce_page(struct device *dev, phys_addr_t *phys,
+		size_t size, enum dma_data_direction dir, unsigned long attrs)
+{
+	dma_addr_t dma_addr;
+
+	if (unlikely(swiotlb_force == SWIOTLB_NO_FORCE)) {
+		dev_warn_ratelimited(dev,
+			"Cannot do DMA to address %pa\n", phys);
+		return DIRECT_MAPPING_ERROR;
+	}
+
+	/* Oh well, have to allocate and map a bounce buffer. */
+	*phys = swiotlb_tbl_map_single(dev, __phys_to_dma(dev, io_tlb_start),
+			*phys, size, dir, attrs);
+	if (*phys == SWIOTLB_MAP_ERROR)
+		return DIRECT_MAPPING_ERROR;
+
+	/* Ensure that the address returned is DMA'ble */
+	dma_addr = __phys_to_dma(dev, *phys);
+	if (unlikely(!dma_capable(dev, dma_addr, size))) {
+		swiotlb_tbl_unmap_single(dev, *phys, size, dir,
+			attrs | DMA_ATTR_SKIP_CPU_SYNC);
+		return DIRECT_MAPPING_ERROR;
+	}
+
+	return dma_addr;
+}
+
 /*
  * Map a single buffer of the indicated size for DMA in streaming mode.  The
  * physical address to use is returned.
