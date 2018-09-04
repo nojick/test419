@@ -4825,7 +4825,7 @@ EXPORT_SYMBOL_GPL(regulator_unregister);
 #ifdef CONFIG_SUSPEND
 /**
  * regulator_suspend - prepare regulators for system wide suspend
- * @state: system suspend state
+ * @dev: ``&struct device`` pointer that is passed to _regulator_suspend()
  *
  * Configure each regulator with it's suspend operating parameters for state.
  */
