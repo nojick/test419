@@ -4,6 +4,8 @@
  * Author: Rob Clark <robdclark@gmail.com>
  */
 
+#include <drm/drm_atomic_uapi.h>
+
 #include "msm_drv.h"
 #include "msm_gem.h"
 #include "msm_kms.h"

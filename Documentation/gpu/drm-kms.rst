@@ -287,6 +287,15 @@ Atomic Mode Setting Function Reference
 .. kernel-doc:: drivers/gpu/drm/drm_atomic.c
    :export:
 
+Atomic Mode Setting IOCTL and UAPI Functions
+--------------------------------------------
+
+.. kernel-doc:: drivers/gpu/drm/drm_atomic_uapi.c
+   :doc: overview
+
+.. kernel-doc:: drivers/gpu/drm/drm_atomic_uapi.c
+   :export:
+
 CRTC Abstraction
 ================
 
@@ -557,7 +566,7 @@ Tile Group Property
 Explicit Fencing Properties
 ---------------------------
 
-.. kernel-doc:: drivers/gpu/drm/drm_atomic.c
+.. kernel-doc:: drivers/gpu/drm/drm_atomic_uapi.c
    :doc: explicit fencing properties
 
 Existing KMS Properties
