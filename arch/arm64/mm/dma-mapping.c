@@ -372,7 +372,7 @@ static void __iommu_sync_single_for_cpu(struct device *dev,
 	if (dev_is_dma_coherent(dev))
 		return;
 
-	phys = iommu_iova_to_phys(iommu_get_domain_for_dev(dev), dev_addr);
+	phys = iommu_iova_to_phys(iommu_get_dma_domain(dev), dev_addr);
 	arch_sync_dma_for_cpu(dev, phys, size, dir);
 }
 
@@ -385,7 +385,7 @@ static void __iommu_sync_single_for_device(struct device *dev,
 	if (dev_is_dma_coherent(dev))
 		return;
 
-	phys = iommu_iova_to_phys(iommu_get_domain_for_dev(dev), dev_addr);
+	phys = iommu_iova_to_phys(iommu_get_dma_domain(dev), dev_addr);
 	arch_sync_dma_for_device(dev, phys, size, dir);
 }
 
@@ -398,9 +398,9 @@ static dma_addr_t __iommu_map_page(struct device *dev, struct page *page,
 	int prot = dma_info_to_prot(dir, coherent, attrs);
 	dma_addr_t dev_addr = iommu_dma_map_page(dev, page, offset, size, prot);
 
-	if (!iommu_dma_mapping_error(dev, dev_addr) &&
-	    (attrs & DMA_ATTR_SKIP_CPU_SYNC) == 0)
-		__iommu_sync_single_for_device(dev, dev_addr, size, dir);
+	if (!coherent && !(attrs & DMA_ATTR_SKIP_CPU_SYNC) &&
+	    !iommu_dma_mapping_error(dev, dev_addr))
+		__dma_map_area(page_address(page) + offset, size, dir);
 
 	return dev_addr;
 }
