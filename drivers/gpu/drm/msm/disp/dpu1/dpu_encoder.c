@@ -1475,7 +1475,8 @@ static void _dpu_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		ret = ctl->ops.get_pending_flush(ctl);
 
 	trace_dpu_enc_trigger_flush(DRMID(drm_enc), phys->intf_idx,
-				    pending_kickoff_cnt, ctl->idx, ret);
+				    pending_kickoff_cnt, ctl->idx,
+				    extra_flush_bits, ret);
 }
 
 /**
