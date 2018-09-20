@@ -38,7 +38,7 @@
 
 #define MISR_BUFF_SIZE			256
 
-static inline struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
+static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv;
 
