@@ -2261,7 +2261,8 @@ void __init trap_init(void)
 		phys_addr_t ebase_pa;
 
 		ebase = (unsigned long)
-			__alloc_bootmem(size, 1 << fls(size), 0);
+			memblock_alloc_from(size, 1 << fls(size), 0);
+		memblock_set_bottom_up(false);
 
 		/*
 		 * Try to ensure ebase resides in KSeg0 if possible.
