@@ -725,7 +725,7 @@ static int __init _setup_clkctrl_provider(struct device_node *np)
 	struct clkctrl_provider *provider;
 	u64 size;
 
-	provider = memblock_virt_alloc(sizeof(*provider), 0);
+	provider = memblock_alloc(sizeof(*provider), 0);
 	if (!provider)
 		return -ENOMEM;
 
@@ -738,9 +738,26 @@ static int __init _setup_clkctrl_provider(struct device_node *np)
 	provider->size = size | 0xff;
 	provider->node = np;
 
-	pr_debug("%s: %s: %x...%x [+%x]\n", __func__, np->parent->name,
-		 provider->addr, provider->addr + provider->size,
-		 provider->offset);
+	provider->num_addrs =
+		of_property_count_elems_of_size(np, "reg", sizeof(u32)) / 2;
+
+	provider->addr =
+		memblock_alloc(sizeof(void *) * provider->num_addrs, 0);
+	if (!provider->addr)
+		return -ENOMEM;
+
+	provider->size =
+		memblock_alloc(sizeof(u32) * provider->num_addrs, 0);
+	if (!provider->size)
+		return -ENOMEM;
+
+	for (i = 0; i < provider->num_addrs; i++) {
+		addrp = of_get_address(np, i, &size, NULL);
+		provider->addr[i] = (u32)of_translate_address(np, addrp);
+		provider->size[i] = size;
+		pr_debug("%s: %pOF: %x...%x\n", __func__, np, provider->addr[i],
+			 provider->addr[i] + provider->size[i]);
+	}
 
 	list_add(&provider->link, &clkctrl_providers);
 
