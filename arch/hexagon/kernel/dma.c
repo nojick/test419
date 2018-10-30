@@ -18,9 +18,8 @@
  * 02110-1301, USA.
  */
 
-#include <linux/dma-mapping.h>
-#include <linux/dma-direct.h>
-#include <linux/bootmem.h>
+#include <linux/dma-noncoherent.h>
+#include <linux/memblock.h>
 #include <linux/genalloc.h>
 #include <asm/dma-mapping.h>
 #include <linux/module.h>
