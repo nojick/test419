@@ -328,6 +328,8 @@ void msm_gem_free_work(struct work_struct *work);
 
 void msm_gem_object_set_name(struct drm_gem_object *bo, const char *fmt, ...);
 
+void msm_gem_object_set_name(struct drm_gem_object *bo, const char *fmt, ...);
+
 int msm_framebuffer_prepare(struct drm_framebuffer *fb,
 		struct msm_gem_address_space *aspace);
 void msm_framebuffer_cleanup(struct drm_framebuffer *fb,
