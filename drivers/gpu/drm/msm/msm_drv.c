@@ -25,6 +25,7 @@
 #include "msm_fence.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
+#include "adreno/adreno_gpu.h"
 
 
 /*
@@ -357,6 +358,14 @@ static int get_mdp_ver(struct platform_device *pdev)
 
 #include <linux/of_address.h>
 
+bool msm_use_mmu(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+
+	/* a2xx comes with its own MMU */
+	return priv->is_a2xx || iommu_present(&platform_bus_type);
+}
+
 static int msm_init_vram(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -395,7 +404,7 @@ static int msm_init_vram(struct drm_device *dev)
 		 * Grab the entire CMA chunk carved out in early startup in
 		 * mach-msm:
 		 */
-	} else if (!iommu_present(&platform_bus_type)) {
+	} else if (!msm_use_mmu(dev)) {
 		DRM_INFO("using %s VRAM carveout\n", vram);
 		size = memparse(vram, NULL);
 	}
