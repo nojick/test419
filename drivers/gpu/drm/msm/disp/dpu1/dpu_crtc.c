@@ -22,7 +22,6 @@
 #include "dpu_plane.h"
 #include "dpu_encoder.h"
 #include "dpu_vbif.h"
-#include "dpu_power_handle.h"
 #include "dpu_core_perf.h"
 #include "dpu_trace.h"
 
@@ -57,8 +56,6 @@ static void dpu_crtc_destroy(struct drm_crtc *crtc)
 
 	if (!crtc)
 		return;
-
-	dpu_crtc->phandle = NULL;
 
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&dpu_crtc->crtc_lock);
@@ -849,15 +846,17 @@ static struct drm_crtc_state *dpu_crtc_duplicate_state(struct drm_crtc *crtc)
 	return &cstate->base;
 }
 
-static void dpu_crtc_handle_power_event(u32 event_type, void *arg)
+void dpu_crtc_runtime_resume(struct drm_crtc *crtc)
 {
-	struct drm_crtc *crtc = arg;
 	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
 	struct drm_encoder *encoder;
 
 	mutex_lock(&dpu_crtc->crtc_lock);
 
-	trace_dpu_crtc_handle_power_event(DRMID(crtc), event_type);
+	if (!dpu_crtc->enabled)
+		goto end;
+
+	trace_dpu_crtc_runtime_resume(DRMID(crtc));
 
 	/* restore encoder; crtc will be programmed during commit */
 	drm_for_each_encoder(encoder, crtc->dev) {
@@ -867,6 +866,7 @@ static void dpu_crtc_handle_power_event(u32 event_type, void *arg)
 		dpu_encoder_virt_restore(encoder);
 	}
 
+end:
 	mutex_unlock(&dpu_crtc->crtc_lock);
 }
 
@@ -922,10 +922,6 @@ static void dpu_crtc_disable(struct drm_crtc *crtc)
 		dpu_encoder_register_frame_event_callback(encoder, NULL, NULL);
 	}
 
-	if (dpu_crtc->power_event)
-		dpu_power_handle_unregister_event(dpu_crtc->phandle,
-				dpu_crtc->power_event);
-
 	memset(cstate->mixers, 0, sizeof(cstate->mixers));
 	cstate->num_mixers = 0;
 
@@ -977,11 +973,6 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 
 	/* Enable/restore vblank irq handling */
 	drm_crtc_vblank_on(crtc);
-
-	dpu_crtc->power_event = dpu_power_handle_register_event(
-		dpu_crtc->phandle, DPU_POWER_EVENT_ENABLE,
-		dpu_crtc_handle_power_event, crtc, dpu_crtc->name);
-
 }
 
 struct plane_state {
@@ -1526,8 +1517,6 @@ struct drm_crtc *dpu_crtc_init(struct drm_device *dev, struct drm_plane *plane,
 
 	/* initialize event handling */
 	spin_lock_init(&dpu_crtc->event_lock);
-
-	dpu_crtc->phandle = &kms->phandle;
 
 	DPU_DEBUG("%s: successfully initialized crtc\n", dpu_crtc->name);
 	return crtc;
