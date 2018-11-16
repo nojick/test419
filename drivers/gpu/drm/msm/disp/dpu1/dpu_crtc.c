@@ -773,8 +773,6 @@ static void _dpu_crtc_vblank_enable_no_lock(
 	struct drm_encoder *enc;
 
 	if (enable) {
-		pm_runtime_get_sync(dev->dev);
-
 		list_for_each_entry(enc, &dev->mode_config.encoder_list, head) {
 			if (enc->crtc != crtc)
 				continue;
@@ -797,8 +795,6 @@ static void _dpu_crtc_vblank_enable_no_lock(
 
 			dpu_encoder_register_vblank_callback(enc, NULL, NULL);
 		}
-
-		pm_runtime_put_sync(dev->dev);
 	}
 }
 
@@ -907,6 +903,8 @@ static void dpu_crtc_disable(struct drm_crtc *crtc)
 		crtc->state->event = NULL;
 		spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 	}
+
+	pm_runtime_put_sync(crtc->dev->dev);
 }
 
 static void dpu_crtc_enable(struct drm_crtc *crtc,
@@ -921,6 +919,8 @@ static void dpu_crtc_enable(struct drm_crtc *crtc,
 		return;
 	}
 	priv = crtc->dev->dev_private;
+
+	pm_runtime_get_sync(crtc->dev->dev);
 
 	DRM_DEBUG_KMS("crtc%d\n", crtc->base.id);
 	dpu_crtc = to_dpu_crtc(crtc);
