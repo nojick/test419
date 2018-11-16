@@ -1050,8 +1050,6 @@ static int dpu_bind(struct device *dev, struct device *master, void *data)
 		return ret;
 	}
 
-	dpu_power_resource_init(pdev, &dpu_kms->phandle);
-
 	platform_set_drvdata(pdev, dpu_kms);
 
 	msm_kms_init(&dpu_kms->base, &kms_funcs);
@@ -1071,7 +1069,6 @@ static void dpu_unbind(struct device *dev, struct device *master, void *data)
 	struct dpu_kms *dpu_kms = platform_get_drvdata(pdev);
 	struct dss_module_power *mp = &dpu_kms->mp;
 
-	dpu_power_resource_deinit(pdev, &dpu_kms->phandle);
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 	devm_kfree(&pdev->dev, mp->clk_config);
 	mp->num_clk = 0;
@@ -1110,10 +1107,6 @@ static int __maybe_unused dpu_runtime_suspend(struct device *dev)
 		return rc;
 	}
 
-	rc = dpu_power_resource_enable(&dpu_kms->phandle, false);
-	if (rc)
-		DPU_ERROR("resource disable failed: %d\n", rc);
-
 	rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 	if (rc)
 		DPU_ERROR("clock disable failed rc:%d\n", rc);
@@ -1146,10 +1139,6 @@ static int __maybe_unused dpu_runtime_resume(struct device *dev)
 
 	drm_for_each_encoder(encoder, ddev)
 		dpu_encoder_virt_runtime_resume(encoder);
-
-	rc = dpu_power_resource_enable(&dpu_kms->phandle, true);
-	if (rc)
-		DPU_ERROR("resource enable failed: %d\n", rc);
 
 	return rc;
 }
