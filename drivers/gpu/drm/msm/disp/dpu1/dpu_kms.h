@@ -20,7 +20,6 @@
 #include "dpu_hw_top.h"
 #include "dpu_io_util.h"
 #include "dpu_rm.h"
-#include "dpu_power_handle.h"
 #include "dpu_irq.h"
 #include "dpu_core_perf.h"
 
@@ -102,8 +101,6 @@ struct dpu_kms {
 	struct drm_device *dev;
 	int core_rev;
 	struct dpu_mdss_cfg *catalog;
-
-	struct dpu_power_handle phandle;
 
 	/* directory entry for debugfs */
 	struct dentry *debugfs_root;
