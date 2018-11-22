@@ -518,6 +518,7 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 	if (IS_ERR(kms)) {
 		DRM_DEV_ERROR(dev, "failed to load kms\n");
 		ret = PTR_ERR(kms);
+		priv->kms = NULL;
 		goto err_msm_uninit;
 	}
 
