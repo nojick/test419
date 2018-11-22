@@ -1001,7 +1001,7 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 
 	if (!msm_use_mmu(dev))
 		use_vram = true;
-	else if ((flags & MSM_BO_STOLEN) && priv->vram.size)
+	else if ((flags & (MSM_BO_STOLEN | MSM_BO_SCANOUT)) && priv->vram.size)
 		use_vram = true;
 
 	if (WARN_ON(use_vram && !priv->vram.size))
