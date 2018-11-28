@@ -448,21 +448,6 @@ static void dm_dp_destroy_mst_connector(struct drm_dp_mst_topology_mgr *mgr,
 	aconnector->mst_connected = false;
 }
 
-static void dm_dp_mst_hotplug(struct drm_dp_mst_topology_mgr *mgr)
-{
-	struct amdgpu_dm_connector *master = container_of(mgr, struct amdgpu_dm_connector, mst_mgr);
-	struct drm_device *dev = master->base.dev;
-
-	drm_kms_helper_hotplug_event(dev);
-}
-
-static void dm_dp_mst_link_status_reset(struct drm_connector *connector)
-{
-	mutex_lock(&connector->dev->mode_config.mutex);
-	drm_connector_set_link_status_property(connector, DRM_MODE_LINK_STATUS_BAD);
-	mutex_unlock(&connector->dev->mode_config.mutex);
-}
-
 static void dm_dp_mst_register_connector(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
@@ -483,7 +468,6 @@ static void dm_dp_mst_register_connector(struct drm_connector *connector)
 static const struct drm_dp_mst_topology_cbs dm_mst_cbs = {
 	.add_connector = dm_dp_add_mst_connector,
 	.destroy_connector = dm_dp_destroy_mst_connector,
-	.hotplug = dm_dp_mst_hotplug,
 	.register_connector = dm_dp_mst_register_connector
 };
 
