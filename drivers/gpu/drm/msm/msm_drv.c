@@ -12,6 +12,7 @@
 #include "msm_drv.h"
 #include "msm_debugfs.h"
 #include "msm_fence.h"
+#include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
 #include "adreno/adreno_gpu.h"
@@ -856,7 +857,8 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 {
 	struct drm_msm_gem_info *args = data;
 	struct drm_gem_object *obj;
-	int ret = 0;
+	struct msm_gem_object *msm_obj;
+	int i, ret = 0;
 
 	if (args->pad)
 		return -EINVAL;
@@ -868,6 +870,9 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 		if (args->len)
 			return -EINVAL;
 		break;
+	case MSM_INFO_SET_NAME:
+	case MSM_INFO_GET_NAME:
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -876,12 +881,41 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 	if (!obj)
 		return -ENOENT;
 
+	msm_obj = to_msm_bo(obj);
+
 	switch (args->info) {
 	case MSM_INFO_GET_OFFSET:
 		args->value = msm_gem_mmap_offset(obj);
 		break;
 	case MSM_INFO_GET_IOVA:
 		ret = msm_ioctl_gem_info_iova(dev, obj, &args->value);
+		break;
+	case MSM_INFO_SET_NAME:
+		/* length check should leave room for terminating null: */
+		if (args->len >= sizeof(msm_obj->name)) {
+			ret = -EINVAL;
+			break;
+		}
+		ret = copy_from_user(msm_obj->name,
+			u64_to_user_ptr(args->value), args->len);
+		msm_obj->name[args->len] = '\0';
+		for (i = 0; i < args->len; i++) {
+			if (!isprint(msm_obj->name[i])) {
+				msm_obj->name[i] = '\0';
+				break;
+			}
+		}
+		break;
+	case MSM_INFO_GET_NAME:
+		if (args->value && (args->len < strlen(msm_obj->name))) {
+			ret = -EINVAL;
+			break;
+		}
+		args->len = strlen(msm_obj->name);
+		if (args->value) {
+			ret = copy_to_user(u64_to_user_ptr(args->value),
+					msm_obj->name, args->len);
+		}
 		break;
 	}
 
