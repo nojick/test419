@@ -56,5 +56,6 @@ bool drm_helper_encoder_in_use(struct drm_encoder *encoder);
 int drm_helper_connector_dpms(struct drm_connector *connector, int mode);
 
 void drm_helper_resume_force_mode(struct drm_device *dev);
+int drm_helper_force_disable_all(struct drm_device *dev);
 
 #endif
