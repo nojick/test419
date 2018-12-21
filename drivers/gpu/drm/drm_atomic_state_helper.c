@@ -243,6 +243,7 @@ void __drm_atomic_helper_plane_duplicate_state(struct drm_plane *plane,
 
 	state->fence = NULL;
 	state->commit = NULL;
+	state->fb_damage_clips = NULL;
 }
 EXPORT_SYMBOL(__drm_atomic_helper_plane_duplicate_state);
 
@@ -287,6 +288,8 @@ void __drm_atomic_helper_plane_destroy_state(struct drm_plane_state *state)
 
 	if (state->commit)
 		drm_crtc_commit_put(state->commit);
+
+	drm_property_blob_put(state->fb_damage_clips);
 }
 EXPORT_SYMBOL(__drm_atomic_helper_plane_destroy_state);
 
