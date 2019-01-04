@@ -26,7 +26,7 @@ user_backtrace(struct frame_tail __user *tail,
 	unsigned long err;
 
 	/* Also check accessibility of one struct frame_tail beyond */
-	if (!access_ok(VERIFY_READ, tail, sizeof(buftail)))
+	if (!access_ok(tail, sizeof(buftail)))
 		return NULL;
 
 	pagefault_disable();
@@ -71,7 +71,7 @@ compat_user_backtrace(struct compat_frame_tail __user *tail,
 	unsigned long err;
 
 	/* Also check accessibility of one struct frame_tail beyond */
-	if (!access_ok(VERIFY_READ, tail, sizeof(buftail)))
+	if (!access_ok(tail, sizeof(buftail)))
 		return NULL;
 
 	pagefault_disable();
