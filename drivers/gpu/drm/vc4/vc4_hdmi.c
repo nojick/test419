@@ -98,7 +98,6 @@ struct vc4_hdmi_encoder {
 	struct vc4_encoder base;
 	bool hdmi_monitor;
 	bool limited_rgb_range;
-	bool rgb_range_selectable;
 };
 
 static inline struct vc4_hdmi_encoder *
@@ -269,11 +268,6 @@ static int vc4_hdmi_connector_get_modes(struct drm_connector *connector)
 
 	vc4_encoder->hdmi_monitor = drm_detect_hdmi_monitor(edid);
 
-	if (edid && edid->input & DRM_EDID_INPUT_DIGITAL) {
-		vc4_encoder->rgb_range_selectable =
-			drm_rgb_quant_range_selectable(edid);
-	}
-
 	drm_connector_update_edid_property(connector, edid);
 	ret = drm_add_edid_modes(connector, edid);
 	kfree(edid);
@@ -413,8 +407,7 @@ static void vc4_hdmi_set_avi_infoframe(struct drm_encoder *encoder)
 					   hdmi->connector, mode,
 					   vc4_encoder->limited_rgb_range ?
 					   HDMI_QUANTIZATION_RANGE_LIMITED :
-					   HDMI_QUANTIZATION_RANGE_FULL,
-					   vc4_encoder->rgb_range_selectable);
+					   HDMI_QUANTIZATION_RANGE_FULL);
 
 	vc4_hdmi_write_infoframe(encoder, &frame);
 }

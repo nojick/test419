@@ -116,7 +116,6 @@ struct intel_sdvo {
 	bool is_hdmi;
 	bool has_hdmi_monitor;
 	bool has_hdmi_audio;
-	bool rgb_quant_range_selectable;
 
 	/**
 	 * This is set if we detect output of sdvo device as LVDS and
@@ -1011,14 +1010,12 @@ static bool intel_sdvo_set_avi_infoframe(struct intel_sdvo *intel_sdvo,
 		return false;
 	}
 
-	if (intel_sdvo->rgb_quant_range_selectable) {
-		if (pipe_config->limited_color_range)
-			frame.avi.quantization_range =
-				HDMI_QUANTIZATION_RANGE_LIMITED;
-		else
-			frame.avi.quantization_range =
-				HDMI_QUANTIZATION_RANGE_FULL;
-	}
+	drm_hdmi_avi_infoframe_quant_range(&frame.avi,
+					   conn_state->connector,
+					   adjusted_mode,
+					   pipe_config->limited_color_range ?
+					   HDMI_QUANTIZATION_RANGE_LIMITED :
+					   HDMI_QUANTIZATION_RANGE_FULL);
 
 	len = hdmi_infoframe_pack(&frame, sdvo_data, sizeof(sdvo_data));
 	if (len < 0)
@@ -1802,8 +1799,6 @@ intel_sdvo_tmds_sink_detect(struct drm_connector *connector)
 			if (intel_sdvo->is_hdmi) {
 				intel_sdvo->has_hdmi_monitor = drm_detect_hdmi_monitor(edid);
 				intel_sdvo->has_hdmi_audio = drm_detect_monitor_audio(edid);
-				intel_sdvo->rgb_quant_range_selectable =
-					drm_rgb_quant_range_selectable(edid);
 			}
 		} else
 			status = connector_status_disconnected;
@@ -1852,7 +1847,6 @@ intel_sdvo_detect(struct drm_connector *connector, bool force)
 
 	intel_sdvo->has_hdmi_monitor = false;
 	intel_sdvo->has_hdmi_audio = false;
-	intel_sdvo->rgb_quant_range_selectable = false;
 
 	if ((intel_sdvo_connector->output_flag & response) == 0)
 		ret = connector_status_disconnected;
