@@ -550,6 +550,8 @@ nv50_hdmi_enable(struct drm_encoder *encoder, struct drm_display_mode *mode)
 	u32 max_ac_packet;
 	union hdmi_infoframe avi_frame;
 	union hdmi_infoframe vendor_frame;
+	bool high_tmds_clock_ratio = false, scrambling = false;
+	u8 config;
 	int ret;
 	int size;
 
@@ -557,8 +559,10 @@ nv50_hdmi_enable(struct drm_encoder *encoder, struct drm_display_mode *mode)
 	if (!drm_detect_hdmi_monitor(nv_connector->edid))
 		return;
 
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame.avi, mode,
-						       false);
+	hdmi = &nv_connector->base.display_info.hdmi;
+
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame.avi,
+						       &nv_connector->base, mode);
 	if (!ret) {
 		/* We have an AVI InfoFrame, populate it to the display */
 		args.pwr.avi_infoframe_length

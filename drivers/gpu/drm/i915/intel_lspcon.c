@@ -185,6 +185,256 @@ static void lspcon_resume_in_pcon_wa(struct intel_lspcon *lspcon)
 	DRM_DEBUG_KMS("LSPCON DP descriptor mismatch after resume\n");
 }
 
+static bool lspcon_parade_fw_ready(struct drm_dp_aux *aux)
+{
+	u8 avi_if_ctrl;
+	u8 retry;
+	ssize_t ret;
+
+	/* Check if LSPCON FW is ready for data */
+	for (retry = 0; retry < 5; retry++) {
+		if (retry)
+			usleep_range(200, 300);
+
+		ret = drm_dp_dpcd_read(aux, LSPCON_PARADE_AVI_IF_CTRL,
+				       &avi_if_ctrl, 1);
+		if (ret < 0) {
+			DRM_ERROR("Failed to read AVI IF control\n");
+			return false;
+		}
+
+		if ((avi_if_ctrl & LSPCON_PARADE_AVI_IF_KICKOFF) == 0)
+			return true;
+	}
+
+	DRM_ERROR("Parade FW not ready to accept AVI IF\n");
+	return false;
+}
+
+static bool _lspcon_parade_write_infoframe_blocks(struct drm_dp_aux *aux,
+						  uint8_t *avi_buf)
+{
+	u8 avi_if_ctrl;
+	u8 block_count = 0;
+	u8 *data;
+	uint16_t reg;
+	ssize_t ret;
+
+	while (block_count < 4) {
+		if (!lspcon_parade_fw_ready(aux)) {
+			DRM_DEBUG_KMS("LSPCON FW not ready, block %d\n",
+				      block_count);
+			return false;
+		}
+
+		reg = LSPCON_PARADE_AVI_IF_WRITE_OFFSET;
+		data = avi_buf + block_count * 8;
+		ret = drm_dp_dpcd_write(aux, reg, data, 8);
+		if (ret < 0) {
+			DRM_ERROR("Failed to write AVI IF block %d\n",
+				  block_count);
+			return false;
+		}
+
+		/*
+		 * Once a block of data is written, we have to inform the FW
+		 * about this by writing into avi infoframe control register:
+		 * - set the kickoff bit[7] to 1
+		 * - write the block no. to bits[1:0]
+		 */
+		reg = LSPCON_PARADE_AVI_IF_CTRL;
+		avi_if_ctrl = LSPCON_PARADE_AVI_IF_KICKOFF | block_count;
+		ret = drm_dp_dpcd_write(aux, reg, &avi_if_ctrl, 1);
+		if (ret < 0) {
+			DRM_ERROR("Failed to update (0x%x), block %d\n",
+				  reg, block_count);
+			return false;
+		}
+
+		block_count++;
+	}
+
+	DRM_DEBUG_KMS("Wrote AVI IF blocks successfully\n");
+	return true;
+}
+
+static bool _lspcon_write_avi_infoframe_parade(struct drm_dp_aux *aux,
+					       const uint8_t *frame,
+					       ssize_t len)
+{
+	uint8_t avi_if[LSPCON_PARADE_AVI_IF_DATA_SIZE] = {1, };
+
+	/*
+	 * Parade's frames contains 32 bytes of data, divided
+	 * into 4 frames:
+	 *	Token byte (first byte of first frame, must be non-zero)
+	 *	HB0 to HB2	 from AVI IF (3 bytes header)
+	 *	PB0 to PB27 from AVI IF (28 bytes data)
+	 * So it should look like this
+	 *	first block: | <token> <HB0-HB2> <DB0-DB3> |
+	 *	next 3 blocks: |<DB4-DB11>|<DB12-DB19>|<DB20-DB28>|
+	 */
+
+	if (len > LSPCON_PARADE_AVI_IF_DATA_SIZE - 1) {
+		DRM_ERROR("Invalid length of infoframes\n");
+		return false;
+	}
+
+	memcpy(&avi_if[1], frame, len);
+
+	if (!_lspcon_parade_write_infoframe_blocks(aux, avi_if)) {
+		DRM_DEBUG_KMS("Failed to write infoframe blocks\n");
+		return false;
+	}
+
+	return true;
+}
+
+static bool _lspcon_write_avi_infoframe_mca(struct drm_dp_aux *aux,
+					    const uint8_t *buffer, ssize_t len)
+{
+	int ret;
+	uint32_t val = 0;
+	uint32_t retry;
+	uint16_t reg;
+	const uint8_t *data = buffer;
+
+	reg = LSPCON_MCA_AVI_IF_WRITE_OFFSET;
+	while (val < len) {
+		/* DPCD write for AVI IF can fail on a slow FW day, so retry */
+		for (retry = 0; retry < 5; retry++) {
+			ret = drm_dp_dpcd_write(aux, reg, (void *)data, 1);
+			if (ret == 1) {
+				break;
+			} else if (retry < 4) {
+				mdelay(50);
+				continue;
+			} else {
+				DRM_ERROR("DPCD write failed at:0x%x\n", reg);
+				return false;
+			}
+		}
+		val++; reg++; data++;
+	}
+
+	val = 0;
+	reg = LSPCON_MCA_AVI_IF_CTRL;
+	ret = drm_dp_dpcd_read(aux, reg, &val, 1);
+	if (ret < 0) {
+		DRM_ERROR("DPCD read failed, address 0x%x\n", reg);
+		return false;
+	}
+
+	/* Indicate LSPCON chip about infoframe, clear bit 1 and set bit 0 */
+	val &= ~LSPCON_MCA_AVI_IF_HANDLED;
+	val |= LSPCON_MCA_AVI_IF_KICKOFF;
+
+	ret = drm_dp_dpcd_write(aux, reg, &val, 1);
+	if (ret < 0) {
+		DRM_ERROR("DPCD read failed, address 0x%x\n", reg);
+		return false;
+	}
+
+	val = 0;
+	ret = drm_dp_dpcd_read(aux, reg, &val, 1);
+	if (ret < 0) {
+		DRM_ERROR("DPCD read failed, address 0x%x\n", reg);
+		return false;
+	}
+
+	if (val == LSPCON_MCA_AVI_IF_HANDLED)
+		DRM_DEBUG_KMS("AVI IF handled by FW\n");
+
+	return true;
+}
+
+void lspcon_write_infoframe(struct intel_encoder *encoder,
+			    const struct intel_crtc_state *crtc_state,
+			    unsigned int type,
+			    const void *frame, ssize_t len)
+{
+	bool ret;
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
+	struct intel_lspcon *lspcon = enc_to_intel_lspcon(&encoder->base);
+
+	/* LSPCON only needs AVI IF */
+	if (type != HDMI_INFOFRAME_TYPE_AVI)
+		return;
+
+	if (lspcon->vendor == LSPCON_VENDOR_MCA)
+		ret = _lspcon_write_avi_infoframe_mca(&intel_dp->aux,
+						      frame, len);
+	else
+		ret = _lspcon_write_avi_infoframe_parade(&intel_dp->aux,
+							 frame, len);
+
+	if (!ret) {
+		DRM_ERROR("Failed to write AVI infoframes\n");
+		return;
+	}
+
+	DRM_DEBUG_DRIVER("AVI infoframes updated successfully\n");
+}
+
+void lspcon_set_infoframes(struct intel_encoder *encoder,
+			   bool enable,
+			   const struct intel_crtc_state *crtc_state,
+			   const struct drm_connector_state *conn_state)
+{
+	ssize_t ret;
+	union hdmi_infoframe frame;
+	uint8_t buf[VIDEO_DIP_DATA_SIZE];
+	struct intel_digital_port *dig_port = enc_to_dig_port(&encoder->base);
+	struct intel_lspcon *lspcon = &dig_port->lspcon;
+	const struct drm_display_mode *adjusted_mode =
+		&crtc_state->base.adjusted_mode;
+
+	if (!lspcon->active) {
+		DRM_ERROR("Writing infoframes while LSPCON disabled ?\n");
+		return;
+	}
+
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi,
+						       conn_state->connector,
+						       adjusted_mode);
+	if (ret < 0) {
+		DRM_ERROR("couldn't fill AVI infoframe\n");
+		return;
+	}
+
+	if (crtc_state->output_format == INTEL_OUTPUT_FORMAT_YCBCR444) {
+		if (crtc_state->lspcon_downsampling)
+			frame.avi.colorspace = HDMI_COLORSPACE_YUV420;
+		else
+			frame.avi.colorspace = HDMI_COLORSPACE_YUV444;
+	} else {
+		frame.avi.colorspace = HDMI_COLORSPACE_RGB;
+	}
+
+	drm_hdmi_avi_infoframe_quant_range(&frame.avi,
+					   conn_state->connector,
+					   adjusted_mode,
+					   crtc_state->limited_color_range ?
+					   HDMI_QUANTIZATION_RANGE_LIMITED :
+					   HDMI_QUANTIZATION_RANGE_FULL,
+					   false);
+
+	ret = hdmi_infoframe_pack(&frame, buf, sizeof(buf));
+	if (ret < 0) {
+		DRM_ERROR("Failed to pack AVI IF\n");
+		return;
+	}
+
+	dig_port->write_infoframe(encoder, crtc_state, HDMI_INFOFRAME_TYPE_AVI,
+				  buf, ret);
+}
+
+bool lspcon_infoframe_enabled(struct intel_encoder *encoder,
+			      const struct intel_crtc_state *pipe_config)
+{
+	return enc_to_intel_lspcon(&encoder->base)->active;
+}
+
 void lspcon_resume(struct intel_lspcon *lspcon)
 {
 	enum drm_lspcon_mode expected_mode;
