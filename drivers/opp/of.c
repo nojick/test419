@@ -315,6 +315,8 @@ static int _opp_add_static_v2(struct opp_table *opp_table, struct device *dev,
 		new_opp->rate = (unsigned long)rate;
 	}
 
+	of_property_read_u32(np, "opp-level", &new_opp->level);
+
 	/* Check if the OPP supports hardware's hierarchy of versions or not */
 	if (!_opp_is_supported(dev, opp_table, np)) {
 		dev_dbg(dev, "OPP not supported by hardware: %llu\n", rate);
