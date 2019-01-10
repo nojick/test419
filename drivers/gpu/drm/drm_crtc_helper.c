@@ -93,6 +93,8 @@ bool drm_helper_encoder_in_use(struct drm_encoder *encoder)
 	struct drm_connector_list_iter conn_iter;
 	struct drm_device *dev = encoder->dev;
 
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
+
 	/*
 	 * We can expect this mutex to be locked if we are not panicking.
 	 * Locking is currently fubar in the panic handler.
@@ -130,6 +132,8 @@ bool drm_helper_crtc_in_use(struct drm_crtc *crtc)
 {
 	struct drm_encoder *encoder;
 	struct drm_device *dev = crtc->dev;
+
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
 
 	/*
 	 * We can expect this mutex to be locked if we are not panicking.
@@ -208,8 +212,7 @@ static void __drm_helper_disable_unused_functions(struct drm_device *dev)
  */
 void drm_helper_disable_unused_functions(struct drm_device *dev)
 {
-	if (drm_core_check_feature(dev, DRIVER_ATOMIC))
-		DRM_ERROR("Called for atomic driver, this is not what you want.\n");
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
 
 	drm_modeset_lock_all(dev);
 	__drm_helper_disable_unused_functions(dev);
@@ -276,6 +279,8 @@ bool drm_crtc_helper_set_mode(struct drm_crtc *crtc,
 	bool saved_enabled;
 	struct drm_encoder *encoder;
 	bool ret = true;
+
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
 
 	drm_warn_on_modeset_not_all_locked(dev);
 
@@ -519,6 +524,9 @@ int drm_crtc_helper_set_config(struct drm_mode_set *set,
 
 	crtc_funcs = set->crtc->helper_private;
 
+	dev = set->crtc->dev;
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
+
 	if (!set->mode)
 		set->fb = NULL;
 
@@ -533,8 +541,6 @@ int drm_crtc_helper_set_config(struct drm_mode_set *set,
 		drm_crtc_helper_disable(set->crtc);
 		return 0;
 	}
-
-	dev = set->crtc->dev;
 
 	drm_warn_on_modeset_not_all_locked(dev);
 
@@ -843,6 +849,8 @@ int drm_helper_connector_dpms(struct drm_connector *connector, int mode)
 	struct drm_crtc *crtc = encoder ? encoder->crtc : NULL;
 	int old_dpms, encoder_dpms = DRM_MODE_DPMS_OFF;
 
+	WARN_ON(drm_drv_uses_atomic_modeset(connector->dev));
+
 	if (mode == connector->dpms)
 		return 0;
 
@@ -913,6 +921,8 @@ void drm_helper_resume_force_mode(struct drm_device *dev)
 	const struct drm_crtc_helper_funcs *crtc_funcs;
 	int encoder_dpms;
 	bool ret;
+
+	WARN_ON(drm_drv_uses_atomic_modeset(dev));
 
 	drm_modeset_lock_all(dev);
 	drm_for_each_crtc(crtc, dev) {
