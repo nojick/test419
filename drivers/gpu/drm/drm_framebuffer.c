@@ -32,6 +32,7 @@
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_print.h>
+#include <drm/drm_util.h>
 
 #include "drm_crtc_internal.h"
 #include "drm_internal.h"
