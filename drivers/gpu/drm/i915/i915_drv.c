@@ -41,8 +41,7 @@
 #include <linux/vt.h>
 #include <acpi/video.h>
 
-#include <drm/drmP.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/i915_drm.h>
 

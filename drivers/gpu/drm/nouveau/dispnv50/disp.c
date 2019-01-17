@@ -32,10 +32,11 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
 #include <drm/drm_dp_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_scdc_helper.h>
 #include <drm/drm_edid.h>
 
 #include <nvif/class.h>
@@ -1024,6 +1025,13 @@ nv50_mstm_prepare(struct nv50_mstm *mstm)
 }
 
 static void
+nv50_mstm_hotplug(struct drm_dp_mst_topology_mgr *mgr)
+{
+	struct nv50_mstm *mstm = nv50_mstm(mgr);
+	drm_kms_helper_hotplug_event(mstm->outp->base.base.dev);
+}
+
+static void
 nv50_mstm_destroy_connector(struct drm_dp_mst_topology_mgr *mgr,
 			    struct drm_connector *connector)
 {
@@ -1074,6 +1082,7 @@ nv50_mstm = {
 	.add_connector = nv50_mstm_add_connector,
 	.register_connector = nv50_mstm_register_connector,
 	.destroy_connector = nv50_mstm_destroy_connector,
+	.hotplug = nv50_mstm_hotplug,
 };
 
 void
