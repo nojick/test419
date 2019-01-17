@@ -8,7 +8,7 @@
 
 #include "vkms_drv.h"
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_probe_helper.h>
 
 static enum hrtimer_restart vkms_vblank_simulate(struct hrtimer *timer)
 {

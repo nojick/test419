@@ -22,6 +22,8 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
 #include "vc4_drv.h"
 #include "vc4_regs.h"
 
