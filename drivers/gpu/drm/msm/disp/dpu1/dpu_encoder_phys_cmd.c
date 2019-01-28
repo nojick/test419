@@ -609,8 +609,7 @@ static void dpu_encoder_phys_cmd_get_hw_resources(
 }
 
 static void dpu_encoder_phys_cmd_prepare_for_kickoff(
-		struct dpu_encoder_phys *phys_enc,
-		struct dpu_encoder_kickoff_params *params)
+		struct dpu_encoder_phys *phys_enc)
 {
 	struct dpu_encoder_phys_cmd *cmd_enc =
 			to_dpu_encoder_phys_cmd(phys_enc);
@@ -708,7 +707,7 @@ static int dpu_encoder_phys_cmd_wait_for_commit_done(
 
 	/* required for both controllers */
 	if (!rc && cmd_enc->serialize_wait4pp)
-		dpu_encoder_phys_cmd_prepare_for_kickoff(phys_enc, NULL);
+		dpu_encoder_phys_cmd_prepare_for_kickoff(phys_enc);
 
 	return rc;
 }
