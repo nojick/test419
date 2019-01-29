@@ -1568,8 +1568,8 @@ static const struct file_operations vmwgfx_driver_fops = {
 };
 
 static struct drm_driver driver = {
-	.driver_features =
-	DRIVER_MODESET | DRIVER_RENDER | DRIVER_ATOMIC,
+	.driver_features = DRIVER_IRQ_SHARED |
+	DRIVER_MODESET | DRIVER_PRIME | DRIVER_RENDER | DRIVER_ATOMIC,
 	.load = vmw_driver_load,
 	.unload = vmw_driver_unload,
 	.get_vblank_counter = vmw_get_vblank_counter,
