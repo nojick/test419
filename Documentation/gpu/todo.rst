@@ -515,21 +515,6 @@ those drivers as simple as possible, so lots of room for refactoring:
   one of the ideas for having a shared dsi/dbi helper, abstracting away the
   transport details more.
 
-- tinydrm_gem_cma_prime_import_sg_table should probably go into the cma
-  helpers, as a _vmapped variant (since not every driver needs the vmap).
-  And tinydrm_gem_cma_free_object could the be merged into
-  drm_gem_cma_free_object().
-
-- tinydrm_fb_create we could move into drm_simple_pipe, only need to add
-  the fb_create hook to drm_simple_pipe_funcs, which would again simplify a
-  bunch of things (since it gives you a one-stop vfunc for simple drivers).
-
-- Quick aside: The unregister devm stuff is kinda getting the lifetimes of
-  a drm_device wrong. Doesn't matter, since everyone else gets it wrong
-  too :-)
-
-- also rework the drm_framebuffer_funcs->dirty hook wire-up, see above.
-
 Contact: Noralf Trønnes, Daniel Vetter
 
 AMD DC Display Driver
