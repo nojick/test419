@@ -155,7 +155,10 @@ struct msm_gem_submit {
 	} *cmd;  /* array of size nr_cmds */
 	struct {
 		uint32_t flags;
-		struct msm_gem_object *obj;
+		union {
+			struct msm_gem_object *obj;
+			uint32_t handle;
+		};
 		uint64_t iova;
 	} bos[0];
 };
