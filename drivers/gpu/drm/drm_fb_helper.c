@@ -3279,7 +3279,7 @@ int drm_fbdev_generic_setup(struct drm_device *dev, unsigned int preferred_bpp)
 
 	drm_fbdev_client_hotplug(&fb_helper->client);
 
-	drm_client_add(&fb_helper->client);
+	drm_client_register(&fb_helper->client);
 
 	return 0;
 }
