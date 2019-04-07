@@ -503,7 +503,6 @@ bail:
 }
 
 static const struct drm_fb_helper_funcs intel_fb_helper_funcs = {
-	.initial_config = intel_fb_initial_config,
 	.fb_probe = intelfb_create,
 };
 
