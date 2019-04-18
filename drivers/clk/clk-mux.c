@@ -31,7 +31,7 @@ static inline u32 clk_mux_readl(struct clk_mux *mux)
 	if (mux->flags & CLK_MUX_BIG_ENDIAN)
 		return ioread32be(mux->reg);
 
-	return clk_readl(mux->reg);
+	return readl(mux->reg);
 }
 
 static inline void clk_mux_writel(struct clk_mux *mux, u32 val)
@@ -39,7 +39,7 @@ static inline void clk_mux_writel(struct clk_mux *mux, u32 val)
 	if (mux->flags & CLK_MUX_BIG_ENDIAN)
 		iowrite32be(val, mux->reg);
 	else
-		clk_writel(val, mux->reg);
+		writel(val, mux->reg);
 }
 
 int clk_mux_val_to_index(struct clk_hw *hw, u32 *table, unsigned int flags,
