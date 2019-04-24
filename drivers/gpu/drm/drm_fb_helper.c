@@ -2561,7 +2561,7 @@ static bool drm_fb_helper_firmware_config(struct drm_fb_helper *fb_helper,
 {
 	struct drm_device *dev = fb_helper->dev;
 	unsigned int count = min(fb_helper->connector_count, BITS_PER_LONG);
-	unsigned long conn_configured, conn_seq;
+	unsigned long conn_configured, conn_seq, mask;
 	int i, j;
 	bool *save_enabled;
 	bool fallback = true, ret = true;
@@ -2579,9 +2579,10 @@ static bool drm_fb_helper_firmware_config(struct drm_fb_helper *fb_helper,
 		drm_modeset_backoff(&ctx);
 
 	memcpy(save_enabled, enabled, count);
-	conn_seq = GENMASK(count - 1, 0);
+	mask = GENMASK(count - 1, 0);
 	conn_configured = 0;
 retry:
+	conn_seq = conn_configured;
 	for (i = 0; i < count; i++) {
 		struct drm_fb_helper_connector *fb_conn;
 		struct drm_connector *connector;
@@ -2594,8 +2595,7 @@ retry:
 		if (conn_configured & BIT(i))
 			continue;
 
-		/* First pass, only consider tiled connectors */
-		if (conn_seq == GENMASK(count - 1, 0) && !connector->has_tile)
+		if (conn_seq == 0 && !connector->has_tile)
 			continue;
 
 		if (connector->status == connector_status_connected)
@@ -2696,10 +2696,8 @@ retry:
 		conn_configured |= BIT(i);
 	}
 
-	if (conn_configured != conn_seq) { /* repeat until no more are found */
-		conn_seq = conn_configured;
+	if ((conn_configured & mask) != mask && conn_configured != conn_seq)
 		goto retry;
-	}
 
 	/*
 	 * If the BIOS didn't enable everything it could, fall back to have the
