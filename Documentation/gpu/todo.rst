@@ -240,6 +240,80 @@ efficient.
 
 Contact: Daniel Vetter
 
+Defaults for .gem_prime_import and export
+-----------------------------------------
+
+Most drivers don't need to set drm_driver->gem_prime_import and
+->gem_prime_export now that drm_gem_prime_import() and drm_gem_prime_export()
+are the default.
+
+struct drm_gem_object_funcs
+---------------------------
+
+GEM objects can now have a function table instead of having the callbacks on the
+DRM driver struct. This is now the preferred way and drivers can be moved over.
+
+Use DRM_MODESET_LOCK_ALL_* helpers instead of boilerplate
+---------------------------------------------------------
+
+For cases where drivers are attempting to grab the modeset locks with a local
+acquire context. Replace the boilerplate code surrounding
+drm_modeset_lock_all_ctx() with DRM_MODESET_LOCK_ALL_BEGIN() and
+DRM_MODESET_LOCK_ALL_END() instead.
+
+This should also be done for all places where drm_modest_lock_all() is still
+used.
+
+As a reference, take a look at the conversions already completed in drm core.
+
+Contact: Sean Paul, respective driver maintainers
+
+Rename CMA helpers to DMA helpers
+---------------------------------
+
+CMA (standing for contiguous memory allocator) is really a bit an accident of
+what these were used for first, a much better name would be DMA helpers. In the
+text these should even be called coherent DMA memory helpers (so maybe CDM, but
+no one knows what that means) since underneath they just use dma_alloc_coherent.
+
+Contact: Laurent Pinchart, Daniel Vetter
+
+Convert direct mode.vrefresh accesses to use drm_mode_vrefresh()
+----------------------------------------------------------------
+
+drm_display_mode.vrefresh isn't guaranteed to be populated. As such, using it
+is risky and has been known to cause div-by-zero bugs. Fortunately, drm core
+has helper which will use mode.vrefresh if it's !0 and will calculate it from
+the timings when it's 0.
+
+Use simple search/replace, or (more fun) cocci to replace instances of direct
+vrefresh access with a call to the helper. Check out
+https://lists.freedesktop.org/archives/dri-devel/2019-January/205186.html for
+inspiration.
+
+Once all instances of vrefresh have been converted, remove vrefresh from
+drm_display_mode to avoid future use.
+
+Contact: Sean Paul
+
+Remove drm_display_mode.hsync
+-----------------------------
+
+We have drm_mode_hsync() to calculate this from hsync_start/end, since drivers
+shouldn't/don't use this, remove this member to avoid any temptations to use it
+in the future. If there is any debug code using drm_display_mode.hsync, convert
+it to use drm_mode_hsync() instead.
+
+Contact: Sean Paul
+
+drm_fb_helper tasks
+-------------------
+
+- drm_fb_helper_restore_fbdev_mode_unlocked() should call restore_fbdev_mode()
+  not the _force variant so it can bail out if there is a master. But first
+  these igt tests need to be fixed: kms_fbcon_fbt@psr and
+  kms_fbcon_fbt@psr-suspend.
+
 Core refactorings
 =================
 
