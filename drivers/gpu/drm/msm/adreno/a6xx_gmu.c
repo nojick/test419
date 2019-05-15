@@ -765,7 +765,7 @@ int a6xx_gmu_resume(struct a6xx_gpu *a6xx_gpu)
 	 * will make sure that the refcounting is correct in case we need to
 	 * bring down the GX after a GMU failure
 	 */
-	if (!IS_ERR(gmu->gxpd))
+	if (!IS_ERR_OR_NULL(gmu->gxpd))
 		pm_runtime_get(gmu->gxpd);
 
 out:
@@ -881,7 +881,7 @@ int a6xx_gmu_stop(struct a6xx_gpu *a6xx_gpu)
 	 * domain. Usually the GMU does this but only if the shutdown sequence
 	 * was successful
 	 */
-	if (!IS_ERR(gmu->gxpd))
+	if (!IS_ERR_OR_NULL(gmu->gxpd))
 		pm_runtime_put_sync(gmu->gxpd);
 
 	clk_bulk_disable_unprepare(gmu->nr_clocks, gmu->clocks);
@@ -1252,7 +1252,7 @@ void a6xx_gmu_remove(struct a6xx_gpu *a6xx_gpu)
 
 	pm_runtime_force_suspend(gmu->dev);
 
-	if (!IS_ERR(gmu->gxpd)) {
+	if (!IS_ERR_OR_NULL(gmu->gxpd)) {
 		pm_runtime_disable(gmu->gxpd);
 		dev_pm_domain_detach(gmu->gxpd, false);
 	}
