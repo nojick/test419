@@ -3006,7 +3006,6 @@ EXPORT_SYMBOL(drm_fb_helper_initial_config);
  */
 int drm_fb_helper_hotplug_event(struct drm_fb_helper *fb_helper)
 {
-	struct drm_device *dev = fb_helper->dev;
 	int err = 0;
 
 	if (!drm_fbdev_emulation || !fb_helper)
@@ -3019,13 +3018,13 @@ int drm_fb_helper_hotplug_event(struct drm_fb_helper *fb_helper)
 		return err;
 	}
 
-	if (!fb_helper->fb || !drm_master_internal_acquire(dev)) {
+	if (!fb_helper->fb || !drm_master_internal_acquire(fb_helper->dev)) {
 		fb_helper->delayed_hotplug = true;
 		mutex_unlock(&fb_helper->lock);
 		return err;
 	}
 
-	drm_master_internal_release(dev);
+	drm_master_internal_release(fb_helper->dev);
 
 	DRM_DEBUG_KMS("\n");
 
