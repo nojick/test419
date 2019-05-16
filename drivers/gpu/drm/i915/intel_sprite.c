@@ -228,7 +228,360 @@ void intel_pipe_update_end(struct intel_crtc_state *new_crtc_state)
 #endif
 }
 
-void
+int intel_plane_check_stride(const struct intel_plane_state *plane_state)
+{
+	struct intel_plane *plane = to_intel_plane(plane_state->base.plane);
+	const struct drm_framebuffer *fb = plane_state->base.fb;
+	unsigned int rotation = plane_state->base.rotation;
+	u32 stride, max_stride;
+
+	/* FIXME other color planes? */
+	stride = plane_state->color_plane[0].stride;
+	max_stride = plane->max_stride(plane, fb->format->format,
+				       fb->modifier, rotation);
+
+	if (stride > max_stride) {
+		DRM_DEBUG_KMS("[FB:%d] stride (%d) exceeds [PLANE:%d:%s] max stride (%d)\n",
+			      fb->base.id, stride,
+			      plane->base.base.id, plane->base.name, max_stride);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int intel_plane_check_src_coordinates(struct intel_plane_state *plane_state)
+{
+	const struct drm_framebuffer *fb = plane_state->base.fb;
+	struct drm_rect *src = &plane_state->base.src;
+	u32 src_x, src_y, src_w, src_h, hsub, vsub;
+	bool rotated = drm_rotation_90_or_270(plane_state->base.rotation);
+
+	/*
+	 * Hardware doesn't handle subpixel coordinates.
+	 * Adjust to (macro)pixel boundary, but be careful not to
+	 * increase the source viewport size, because that could
+	 * push the downscaling factor out of bounds.
+	 */
+	src_x = src->x1 >> 16;
+	src_w = drm_rect_width(src) >> 16;
+	src_y = src->y1 >> 16;
+	src_h = drm_rect_height(src) >> 16;
+
+	src->x1 = src_x << 16;
+	src->x2 = (src_x + src_w) << 16;
+	src->y1 = src_y << 16;
+	src->y2 = (src_y + src_h) << 16;
+
+	if (!fb->format->is_yuv)
+		return 0;
+
+	/* YUV specific checks */
+	if (!rotated) {
+		hsub = fb->format->hsub;
+		vsub = fb->format->vsub;
+	} else {
+		hsub = vsub = max(fb->format->hsub, fb->format->vsub);
+	}
+
+	if (src_x % hsub || src_w % hsub) {
+		DRM_DEBUG_KMS("src x/w (%u, %u) must be a multiple of %u for %sYUV planes\n",
+			      src_x, src_w, hsub, rotated ? "rotated " : "");
+		return -EINVAL;
+	}
+
+	if (src_y % vsub || src_h % vsub) {
+		DRM_DEBUG_KMS("src y/h (%u, %u) must be a multiple of %u for %sYUV planes\n",
+			      src_y, src_h, vsub, rotated ? "rotated " : "");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static unsigned int
+skl_plane_max_stride(struct intel_plane *plane,
+		     u32 pixel_format, u64 modifier,
+		     unsigned int rotation)
+{
+	const struct drm_format_info *info = drm_format_info(pixel_format);
+	int cpp = drm_format_info_plane_cpp(info, 0);
+
+	/*
+	 * "The stride in bytes must not exceed the
+	 * of the size of 8K pixels and 32K bytes."
+	 */
+	if (drm_rotation_90_or_270(rotation))
+		return min(8192, 32768 / cpp);
+	else
+		return min(8192 * cpp, 32768);
+}
+
+static void
+skl_program_scaler(struct intel_plane *plane,
+		   const struct intel_crtc_state *crtc_state,
+		   const struct intel_plane_state *plane_state)
+{
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+	enum pipe pipe = plane->pipe;
+	int scaler_id = plane_state->scaler_id;
+	const struct intel_scaler *scaler =
+		&crtc_state->scaler_state.scalers[scaler_id];
+	int crtc_x = plane_state->base.dst.x1;
+	int crtc_y = plane_state->base.dst.y1;
+	u32 crtc_w = drm_rect_width(&plane_state->base.dst);
+	u32 crtc_h = drm_rect_height(&plane_state->base.dst);
+	u16 y_hphase, uv_rgb_hphase;
+	u16 y_vphase, uv_rgb_vphase;
+	int hscale, vscale;
+
+	hscale = drm_rect_calc_hscale(&plane_state->base.src,
+				      &plane_state->base.dst,
+				      0, INT_MAX);
+	vscale = drm_rect_calc_vscale(&plane_state->base.src,
+				      &plane_state->base.dst,
+				      0, INT_MAX);
+
+	/* TODO: handle sub-pixel coordinates */
+	if (is_planar_yuv_format(plane_state->base.fb->format->format) &&
+	    !icl_is_hdr_plane(dev_priv, plane->id)) {
+		y_hphase = skl_scaler_calc_phase(1, hscale, false);
+		y_vphase = skl_scaler_calc_phase(1, vscale, false);
+
+		/* MPEG2 chroma siting convention */
+		uv_rgb_hphase = skl_scaler_calc_phase(2, hscale, true);
+		uv_rgb_vphase = skl_scaler_calc_phase(2, vscale, false);
+	} else {
+		/* not used */
+		y_hphase = 0;
+		y_vphase = 0;
+
+		uv_rgb_hphase = skl_scaler_calc_phase(1, hscale, false);
+		uv_rgb_vphase = skl_scaler_calc_phase(1, vscale, false);
+	}
+
+	I915_WRITE_FW(SKL_PS_CTRL(pipe, scaler_id),
+		      PS_SCALER_EN | PS_PLANE_SEL(plane->id) | scaler->mode);
+	I915_WRITE_FW(SKL_PS_VPHASE(pipe, scaler_id),
+		      PS_Y_PHASE(y_vphase) | PS_UV_RGB_PHASE(uv_rgb_vphase));
+	I915_WRITE_FW(SKL_PS_HPHASE(pipe, scaler_id),
+		      PS_Y_PHASE(y_hphase) | PS_UV_RGB_PHASE(uv_rgb_hphase));
+	I915_WRITE_FW(SKL_PS_WIN_POS(pipe, scaler_id), (crtc_x << 16) | crtc_y);
+	I915_WRITE_FW(SKL_PS_WIN_SZ(pipe, scaler_id), (crtc_w << 16) | crtc_h);
+}
+
+/* Preoffset values for YUV to RGB Conversion */
+#define PREOFF_YUV_TO_RGB_HI		0x1800
+#define PREOFF_YUV_TO_RGB_ME		0x1F00
+#define PREOFF_YUV_TO_RGB_LO		0x1800
+
+#define  ROFF(x)          (((x) & 0xffff) << 16)
+#define  GOFF(x)          (((x) & 0xffff) << 0)
+#define  BOFF(x)          (((x) & 0xffff) << 16)
+
+static void
+icl_program_input_csc(struct intel_plane *plane,
+		      const struct intel_crtc_state *crtc_state,
+		      const struct intel_plane_state *plane_state)
+{
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+	enum pipe pipe = plane->pipe;
+	enum plane_id plane_id = plane->id;
+
+	static const u16 input_csc_matrix[][9] = {
+		/*
+		 * BT.601 full range YCbCr -> full range RGB
+		 * The matrix required is :
+		 * [1.000, 0.000, 1.371,
+		 *  1.000, -0.336, -0.698,
+		 *  1.000, 1.732, 0.0000]
+		 */
+		[DRM_COLOR_YCBCR_BT601] = {
+			0x7AF8, 0x7800, 0x0,
+			0x8B28, 0x7800, 0x9AC0,
+			0x0, 0x7800, 0x7DD8,
+		},
+		/*
+		 * BT.709 full range YCbCr -> full range RGB
+		 * The matrix required is :
+		 * [1.000, 0.000, 1.574,
+		 *  1.000, -0.187, -0.468,
+		 *  1.000, 1.855, 0.0000]
+		 */
+		[DRM_COLOR_YCBCR_BT709] = {
+			0x7C98, 0x7800, 0x0,
+			0x9EF8, 0x7800, 0xABF8,
+			0x0, 0x7800,  0x7ED8,
+		},
+	};
+
+	/* Matrix for Limited Range to Full Range Conversion */
+	static const u16 input_csc_matrix_lr[][9] = {
+		/*
+		 * BT.601 Limted range YCbCr -> full range RGB
+		 * The matrix required is :
+		 * [1.164384, 0.000, 1.596370,
+		 *  1.138393, -0.382500, -0.794598,
+		 *  1.138393, 1.971696, 0.0000]
+		 */
+		[DRM_COLOR_YCBCR_BT601] = {
+			0x7CC8, 0x7950, 0x0,
+			0x8CB8, 0x7918, 0x9C40,
+			0x0, 0x7918, 0x7FC8,
+		},
+		/*
+		 * BT.709 Limited range YCbCr -> full range RGB
+		 * The matrix required is :
+		 * [1.164, 0.000, 1.833671,
+		 *  1.138393, -0.213249, -0.532909,
+		 *  1.138393, 2.112402, 0.0000]
+		 */
+		[DRM_COLOR_YCBCR_BT709] = {
+			0x7EA8, 0x7950, 0x0,
+			0x8888, 0x7918, 0xADA8,
+			0x0, 0x7918,  0x6870,
+		},
+	};
+	const u16 *csc;
+
+	if (plane_state->base.color_range == DRM_COLOR_YCBCR_FULL_RANGE)
+		csc = input_csc_matrix[plane_state->base.color_encoding];
+	else
+		csc = input_csc_matrix_lr[plane_state->base.color_encoding];
+
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 0), ROFF(csc[0]) |
+		      GOFF(csc[1]));
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 1), BOFF(csc[2]));
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 2), ROFF(csc[3]) |
+		      GOFF(csc[4]));
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 3), BOFF(csc[5]));
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 4), ROFF(csc[6]) |
+		      GOFF(csc[7]));
+	I915_WRITE_FW(PLANE_INPUT_CSC_COEFF(pipe, plane_id, 5), BOFF(csc[8]));
+
+	I915_WRITE_FW(PLANE_INPUT_CSC_PREOFF(pipe, plane_id, 0),
+		      PREOFF_YUV_TO_RGB_HI);
+	I915_WRITE_FW(PLANE_INPUT_CSC_PREOFF(pipe, plane_id, 1),
+		      PREOFF_YUV_TO_RGB_ME);
+	I915_WRITE_FW(PLANE_INPUT_CSC_PREOFF(pipe, plane_id, 2),
+		      PREOFF_YUV_TO_RGB_LO);
+	I915_WRITE_FW(PLANE_INPUT_CSC_POSTOFF(pipe, plane_id, 0), 0x0);
+	I915_WRITE_FW(PLANE_INPUT_CSC_POSTOFF(pipe, plane_id, 1), 0x0);
+	I915_WRITE_FW(PLANE_INPUT_CSC_POSTOFF(pipe, plane_id, 2), 0x0);
+}
+
+static void
+skl_program_plane(struct intel_plane *plane,
+		  const struct intel_crtc_state *crtc_state,
+		  const struct intel_plane_state *plane_state,
+		  int color_plane, bool slave, u32 plane_ctl)
+{
+	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
+	enum plane_id plane_id = plane->id;
+	enum pipe pipe = plane->pipe;
+	const struct drm_intel_sprite_colorkey *key = &plane_state->ckey;
+	u32 surf_addr = plane_state->color_plane[color_plane].offset;
+	u32 stride = skl_plane_stride(plane_state, color_plane);
+	u32 aux_stride = skl_plane_stride(plane_state, 1);
+	int crtc_x = plane_state->base.dst.x1;
+	int crtc_y = plane_state->base.dst.y1;
+	u32 x = plane_state->color_plane[color_plane].x;
+	u32 y = plane_state->color_plane[color_plane].y;
+	u32 src_w = drm_rect_width(&plane_state->base.src) >> 16;
+	u32 src_h = drm_rect_height(&plane_state->base.src) >> 16;
+	struct intel_plane *linked = plane_state->linked_plane;
+	const struct drm_framebuffer *fb = plane_state->base.fb;
+	u8 alpha = plane_state->base.alpha >> 8;
+	u32 plane_color_ctl = 0;
+	unsigned long irqflags;
+	u32 keymsk, keymax;
+
+	plane_ctl |= skl_plane_ctl_crtc(crtc_state);
+
+	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		plane_color_ctl = plane_state->color_ctl |
+			glk_plane_color_ctl_crtc(crtc_state);
+
+	/* Sizes are 0 based */
+	src_w--;
+	src_h--;
+
+	keymax = (key->max_value & 0xffffff) | PLANE_KEYMAX_ALPHA(alpha);
+
+	keymsk = key->channel_mask & 0x7ffffff;
+	if (alpha < 0xff)
+		keymsk |= PLANE_KEYMSK_ALPHA_ENABLE;
+
+	/* The scaler will handle the output position */
+	if (plane_state->scaler_id >= 0) {
+		crtc_x = 0;
+		crtc_y = 0;
+	}
+
+	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags);
+
+	I915_WRITE_FW(PLANE_STRIDE(pipe, plane_id), stride);
+	I915_WRITE_FW(PLANE_POS(pipe, plane_id), (crtc_y << 16) | crtc_x);
+	I915_WRITE_FW(PLANE_SIZE(pipe, plane_id), (src_h << 16) | src_w);
+	I915_WRITE_FW(PLANE_AUX_DIST(pipe, plane_id),
+		      (plane_state->color_plane[1].offset - surf_addr) | aux_stride);
+
+	if (icl_is_hdr_plane(dev_priv, plane_id)) {
+		u32 cus_ctl = 0;
+
+		if (linked) {
+			/* Enable and use MPEG-2 chroma siting */
+			cus_ctl = PLANE_CUS_ENABLE |
+				PLANE_CUS_HPHASE_0 |
+				PLANE_CUS_VPHASE_SIGN_NEGATIVE |
+				PLANE_CUS_VPHASE_0_25;
+
+			if (linked->id == PLANE_SPRITE5)
+				cus_ctl |= PLANE_CUS_PLANE_7;
+			else if (linked->id == PLANE_SPRITE4)
+				cus_ctl |= PLANE_CUS_PLANE_6;
+			else
+				MISSING_CASE(linked->id);
+		}
+
+		I915_WRITE_FW(PLANE_CUS_CTL(pipe, plane_id), cus_ctl);
+	}
+
+	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv))
+		I915_WRITE_FW(PLANE_COLOR_CTL(pipe, plane_id), plane_color_ctl);
+
+	if (fb->format->is_yuv && icl_is_hdr_plane(dev_priv, plane_id))
+		icl_program_input_csc(plane, crtc_state, plane_state);
+
+	skl_write_plane_wm(plane, crtc_state);
+
+	I915_WRITE_FW(PLANE_KEYVAL(pipe, plane_id), key->min_value);
+	I915_WRITE_FW(PLANE_KEYMSK(pipe, plane_id), keymsk);
+	I915_WRITE_FW(PLANE_KEYMAX(pipe, plane_id), keymax);
+
+	I915_WRITE_FW(PLANE_OFFSET(pipe, plane_id), (y << 16) | x);
+
+	if (INTEL_GEN(dev_priv) < 11)
+		I915_WRITE_FW(PLANE_AUX_OFFSET(pipe, plane_id),
+			      (plane_state->color_plane[1].y << 16) |
+			      plane_state->color_plane[1].x);
+
+	/*
+	 * The control register self-arms if the plane was previously
+	 * disabled. Try to make the plane enable atomic by writing
+	 * the control register just before the surface register.
+	 */
+	I915_WRITE_FW(PLANE_CTL(pipe, plane_id), plane_ctl);
+	I915_WRITE_FW(PLANE_SURF(pipe, plane_id),
+		      intel_plane_ggtt_offset(plane_state) + surf_addr);
+
+	if (!slave && plane_state->scaler_id >= 0)
+		skl_program_scaler(plane, crtc_state, plane_state);
+
+	spin_unlock_irqrestore(&dev_priv->uncore.lock, irqflags);
+}
+
+static void
 skl_update_plane(struct intel_plane *plane,
 		 const struct intel_crtc_state *crtc_state,
 		 const struct intel_plane_state *plane_state)
