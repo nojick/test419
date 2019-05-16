@@ -288,8 +288,8 @@ static void scl_vop_cal_scl_fac(struct vop *vop, const struct vop_win_data *win,
 	int vsub = drm_format_vert_chroma_subsampling(pixel_format);
 	const struct drm_format_info *info;
 	bool is_yuv = false;
-	uint16_t cbcr_src_w = src_w / hsub;
-	uint16_t cbcr_src_h = src_h / vsub;
+	uint16_t cbcr_src_w = src_w / info->hsub;
+	uint16_t cbcr_src_h = src_h / info->vsub;
 	uint16_t vsu_mode;
 	uint16_t lb_mode;
 	uint32_t val;

@@ -669,11 +669,10 @@ static int atmel_hlcdc_plane_atomic_check(struct drm_plane *p,
 
 	hsub = drm_format_horz_chroma_subsampling(fb->format->format);
 	vsub = drm_format_vert_chroma_subsampling(fb->format->format);
-
 	for (i = 0; i < state->nplanes; i++) {
 		unsigned int offset = 0;
-		int xdiv = i ? hsub : 1;
-		int ydiv = i ? vsub : 1;
+		int xdiv = i ? fb->format->hsub : 1;
+		int ydiv = i ? fb->format->vsub : 1;
 
 		state->bpp[i] = fb->format->cpp[i];
 		if (!state->bpp[i])
