@@ -289,7 +289,7 @@ static void malidp500_modeset(struct malidp_hw_device *hwdev, struct videomode *
 static int malidp500_rotmem_required(struct malidp_hw_device *hwdev, u16 w, u16 h, u32 fmt)
 {
 	const struct drm_format_info *info = drm_format_info(fmt);
-	int bpp = drm_format_info_plane_cpp(info, 0) * 8;
+	int bpp = info->cpp[0] * 8;
 
 	/*
 	 * Each layer needs enough rotation memory to fit 8 lines
