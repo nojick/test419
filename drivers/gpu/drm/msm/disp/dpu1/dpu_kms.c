@@ -232,7 +232,6 @@ static int _dpu_debugfs_init(struct dpu_kms *dpu_kms)
 	if (IS_ERR_OR_NULL(entry))
 		return -ENODEV;
 
-	/* allow root to be NULL */
 	debugfs_create_x32(DPU_DEBUGFS_HWMASKNAME, 0600, entry, p);
 
 	dpu_debugfs_danger_init(dpu_kms, entry);
