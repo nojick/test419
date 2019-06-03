@@ -74,4 +74,7 @@ static inline void arch_sync_dma_for_cpu_all(struct device *dev)
 
 void arch_dma_prep_coherent(struct page *page, size_t size);
 
+void *uncached_kernel_address(void *addr);
+void *cached_kernel_address(void *addr);
+
 #endif /* _LINUX_DMA_NONCOHERENT_H */
