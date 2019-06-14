@@ -355,8 +355,7 @@ static const struct dma_buf_ops amdgpu_dmabuf_ops = {
  * Returns:
  * Shared DMA buffer representing the GEM buffer object from the given device.
  */
-struct dma_buf *amdgpu_gem_prime_export(struct drm_device *dev,
-					struct drm_gem_object *gobj,
+struct dma_buf *amdgpu_gem_prime_export(struct drm_gem_object *gobj,
 					int flags)
 {
 	struct amdgpu_bo *bo = gem_to_amdgpu_bo(gobj);
@@ -366,9 +365,9 @@ struct dma_buf *amdgpu_gem_prime_export(struct drm_device *dev,
 	    bo->flags & AMDGPU_GEM_CREATE_VM_ALWAYS_VALID)
 		return ERR_PTR(-EPERM);
 
-	buf = drm_gem_prime_export(dev, gobj, flags);
+	buf = drm_gem_prime_export(gobj, flags);
 	if (!IS_ERR(buf)) {
-		buf->file->f_mapping = dev->anon_inode->i_mapping;
+		buf->file->f_mapping = gobj->dev->anon_inode->i_mapping;
 		buf->ops = &amdgpu_dmabuf_ops;
 	}
 
