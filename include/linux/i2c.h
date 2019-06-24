@@ -447,6 +447,9 @@ struct i2c_board_info {
 extern struct i2c_client *
 i2c_new_device(struct i2c_adapter *adap, struct i2c_board_info const *info);
 
+extern struct i2c_client *
+i2c_new_client_device(struct i2c_adapter *adap, struct i2c_board_info const *info);
+
 /* If you don't know the exact address of an I2C device, use this variant
  * instead, which can probe for device presence in a list of possible
  * addresses. The "probe" callback function is optional. If it is provided,
@@ -472,6 +475,9 @@ extern struct i2c_client *
 i2c_new_ancillary_device(struct i2c_client *client,
 				const char *name,
 				u16 default_addr);
+
+extern struct i2c_client *
+i2c_new_dummy_device(struct i2c_adapter *adapter, u16 address);
 
 extern void i2c_unregister_device(struct i2c_client *);
 #endif /* I2C */
