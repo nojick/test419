@@ -511,7 +511,7 @@ int msm_dsi_runtime_resume(struct device *dev)
 	return dsi_bus_clk_enable(msm_host);
 }
 
-int dsi_link_clk_enable_6g(struct msm_dsi_host *msm_host)
+int dsi_link_clk_set_rate_6g(struct msm_dsi_host *msm_host)
 {
 	int ret;
 
@@ -521,13 +521,13 @@ int dsi_link_clk_enable_6g(struct msm_dsi_host *msm_host)
 	ret = clk_set_rate(msm_host->byte_clk, msm_host->byte_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate byte clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
 
 	ret = clk_set_rate(msm_host->pixel_clk, msm_host->pixel_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate pixel clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
 
 	if (msm_host->byte_intf_clk) {
@@ -536,9 +536,17 @@ int dsi_link_clk_enable_6g(struct msm_dsi_host *msm_host)
 		if (ret) {
 			pr_err("%s: Failed to set rate byte intf clk, %d\n",
 			       __func__, ret);
-			goto error;
+			return ret;
 		}
 	}
+
+	return 0;
+}
+
+
+int dsi_link_clk_enable_6g(struct msm_dsi_host *msm_host)
+{
+	int ret;
 
 	ret = clk_prepare_enable(msm_host->esc_clk);
 	if (ret) {
@@ -579,7 +587,7 @@ error:
 	return ret;
 }
 
-int dsi_link_clk_enable_v2(struct msm_dsi_host *msm_host)
+int dsi_link_clk_set_rate_v2(struct msm_dsi_host *msm_host)
 {
 	int ret;
 
@@ -590,26 +598,33 @@ int dsi_link_clk_enable_v2(struct msm_dsi_host *msm_host)
 	ret = clk_set_rate(msm_host->byte_clk, msm_host->byte_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate byte clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
 
 	ret = clk_set_rate(msm_host->esc_clk, msm_host->esc_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate esc clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
 
 	ret = clk_set_rate(msm_host->src_clk, msm_host->src_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate src clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
 
 	ret = clk_set_rate(msm_host->pixel_clk, msm_host->pixel_clk_rate);
 	if (ret) {
 		pr_err("%s: Failed to set rate pixel clk, %d\n", __func__, ret);
-		goto error;
+		return ret;
 	}
+
+	return 0;
+}
+
+int dsi_link_clk_enable_v2(struct msm_dsi_host *msm_host)
+{
+	int ret;
 
 	ret = clk_prepare_enable(msm_host->byte_clk);
 	if (ret) {
@@ -2005,6 +2020,7 @@ int msm_dsi_host_xfer_prepare(struct mipi_dsi_host *host,
 	 * mdp clock need to be enabled to receive dsi interrupt
 	 */
 	pm_runtime_get_sync(&msm_host->pdev->dev);
+	cfg_hnd->ops->link_clk_set_rate(msm_host);
 	cfg_hnd->ops->link_clk_enable(msm_host);
 
 	/* TODO: vote for bus bandwidth */
@@ -2353,7 +2369,9 @@ int msm_dsi_host_power_on(struct mipi_dsi_host *host,
 	}
 
 	pm_runtime_get_sync(&msm_host->pdev->dev);
-	ret = cfg_hnd->ops->link_clk_enable(msm_host);
+	ret = cfg_hnd->ops->link_clk_set_rate(msm_host);
+	if (!ret)
+		ret = cfg_hnd->ops->link_clk_enable(msm_host);
 	if (ret) {
 		pr_err("%s: failed to enable link clocks. ret=%d\n",
 		       __func__, ret);
