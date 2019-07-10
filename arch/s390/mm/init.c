@@ -29,6 +29,7 @@
 #include <linux/export.h>
 #include <linux/cma.h>
 #include <linux/gfp.h>
+#include <linux/dma-direct.h>
 #include <asm/processor.h>
 #include <linux/uaccess.h>
 #include <asm/pgtable.h>
@@ -121,6 +122,52 @@ void mark_rodata_ro(void)
 
 	set_memory_ro((unsigned long)__start_ro_after_init, size >> PAGE_SHIFT);
 	pr_info("Write protected read-only-after-init data: %luk\n", size >> 10);
+}
+
+int set_memory_encrypted(unsigned long addr, int numpages)
+{
+	int i;
+
+	/* make specified pages unshared, (swiotlb, dma_free) */
+	for (i = 0; i < numpages; ++i) {
+		uv_remove_shared(addr);
+		addr += PAGE_SIZE;
+	}
+	return 0;
+}
+
+int set_memory_decrypted(unsigned long addr, int numpages)
+{
+	int i;
+	/* make specified pages shared (swiotlb, dma_alloca) */
+	for (i = 0; i < numpages; ++i) {
+		uv_set_shared(addr);
+		addr += PAGE_SIZE;
+	}
+	return 0;
+}
+
+/* are we a protected virtualization guest? */
+bool sev_active(void)
+{
+	return is_prot_virt_guest();
+}
+
+bool force_dma_unencrypted(struct device *dev)
+{
+	return sev_active();
+}
+
+/* protected virtualization */
+static void pv_init(void)
+{
+	if (!is_prot_virt_guest())
+		return;
+
+	/* make sure bounce buffers are shared */
+	swiotlb_init(1);
+	swiotlb_update_mem_attributes();
+	swiotlb_force = SWIOTLB_FORCE;
 }
 
 void __init mem_init(void)
