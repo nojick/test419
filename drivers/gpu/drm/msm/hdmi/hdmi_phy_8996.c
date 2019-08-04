@@ -12,6 +12,7 @@
  */
 
 #include <linux/clk-provider.h>
+#include <linux/delay.h>
 
 #include "hdmi.h"
 

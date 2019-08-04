@@ -11,6 +11,8 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/delay.h>
+
 #include "dsi_phy.h"
 #include "dsi.xml.h"
 
