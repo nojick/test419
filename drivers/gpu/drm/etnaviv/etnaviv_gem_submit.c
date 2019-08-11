@@ -4,7 +4,7 @@
  */
 
 #include <linux/dma-fence-array.h>
-#include <linux/reservation.h>
+#include <linux/dma-resv.h>
 #include <linux/sync_file.h>
 #include "etnaviv_cmdbuf.h"
 #include "etnaviv_drv.h"
@@ -97,9 +97,9 @@ out_unlock:
 static void submit_unlock_object(struct etnaviv_gem_submit *submit, int i)
 {
 	if (submit->bos[i].flags & BO_LOCKED) {
-		struct etnaviv_gem_object *etnaviv_obj = submit->bos[i].obj;
+		struct drm_gem_object *obj = &submit->bos[i].obj->base;
 
-		ww_mutex_unlock(&etnaviv_obj->resv->lock);
+		ww_mutex_unlock(&obj->resv->lock);
 		submit->bos[i].flags &= ~BO_LOCKED;
 	}
 }
@@ -111,7 +111,7 @@ static int submit_lock_objects(struct etnaviv_gem_submit *submit,
 
 retry:
 	for (i = 0; i < submit->nr_bos; i++) {
-		struct etnaviv_gem_object *etnaviv_obj = submit->bos[i].obj;
+		struct drm_gem_object *obj = &submit->bos[i].obj->base;
 
 		if (slow_locked == i)
 			slow_locked = -1;
@@ -119,7 +119,7 @@ retry:
 		contended = i;
 
 		if (!(submit->bos[i].flags & BO_LOCKED)) {
-			ret = ww_mutex_lock_interruptible(&etnaviv_obj->resv->lock,
+			ret = ww_mutex_lock_interruptible(&obj->resv->lock,
 							  ticket);
 			if (ret == -EALREADY)
 				DRM_ERROR("BO at index %u already on submit list\n",
@@ -142,12 +142,12 @@ fail:
 		submit_unlock_object(submit, slow_locked);
 
 	if (ret == -EDEADLK) {
-		struct etnaviv_gem_object *etnaviv_obj;
+		struct drm_gem_object *obj;
 
-		etnaviv_obj = submit->bos[contended].obj;
+		obj = &submit->bos[contended].obj->base;
 
 		/* we lost out in a seqno race, lock and retry.. */
-		ret = ww_mutex_lock_slow_interruptible(&etnaviv_obj->resv->lock,
+		ret = ww_mutex_lock_slow_interruptible(&obj->resv->lock,
 						       ticket);
 		if (!ret) {
 			submit->bos[contended].flags |= BO_LOCKED;
@@ -165,10 +165,10 @@ static int submit_fence_sync(struct etnaviv_gem_submit *submit)
 
 	for (i = 0; i < submit->nr_bos; i++) {
 		struct etnaviv_gem_submit_bo *bo = &submit->bos[i];
-		struct reservation_object *robj = bo->obj->resv;
+		struct dma_resv *robj = bo->obj->base.resv;
 
 		if (!(bo->flags & ETNA_SUBMIT_BO_WRITE)) {
-			ret = reservation_object_reserve_shared(robj, 1);
+			ret = dma_resv_reserve_shared(robj, 1);
 			if (ret)
 				return ret;
 		}
@@ -177,13 +177,13 @@ static int submit_fence_sync(struct etnaviv_gem_submit *submit)
 			continue;
 
 		if (bo->flags & ETNA_SUBMIT_BO_WRITE) {
-			ret = reservation_object_get_fences_rcu(robj, &bo->excl,
+			ret = dma_resv_get_fences_rcu(robj, &bo->excl,
 								&bo->nr_shared,
 								&bo->shared);
 			if (ret)
 				return ret;
 		} else {
-			bo->excl = reservation_object_get_excl_rcu(robj);
+			bo->excl = dma_resv_get_excl_rcu(robj);
 		}
 
 	}
@@ -196,13 +196,13 @@ static void submit_attach_object_fences(struct etnaviv_gem_submit *submit)
 	int i;
 
 	for (i = 0; i < submit->nr_bos; i++) {
-		struct etnaviv_gem_object *etnaviv_obj = submit->bos[i].obj;
+		struct drm_gem_object *obj = &submit->bos[i].obj->base;
 
 		if (submit->bos[i].flags & ETNA_SUBMIT_BO_WRITE)
-			reservation_object_add_excl_fence(etnaviv_obj->resv,
+			dma_resv_add_excl_fence(obj->resv,
 							  submit->out_fence);
 		else
-			reservation_object_add_shared_fence(etnaviv_obj->resv,
+			dma_resv_add_shared_fence(obj->resv,
 							    submit->out_fence);
 
 		submit_unlock_object(submit, i);
@@ -495,7 +495,7 @@ int etnaviv_ioctl_gem_submit(struct drm_device *dev, void *data,
 	if (ret)
 		goto err_submit_objects;
 
-	submit->cmdbuf.ctx = file->driver_priv;
+	submit->ctx = file->driver_priv;
 	submit->exec_state = args->exec_state;
 	submit->flags = args->flags;
 

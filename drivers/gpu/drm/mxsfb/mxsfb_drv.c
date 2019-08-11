@@ -25,7 +25,8 @@
 #include <linux/of_graph.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/pm_runtime.h>
-#include <linux/reservation.h>
+#include <linux/dma-resv.h>
+#include <linux/spinlock.h>
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>

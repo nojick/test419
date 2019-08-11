@@ -445,21 +445,8 @@ v3d_wait_bo_ioctl(struct drm_device *dev, void *data,
 	if (args->pad != 0)
 		return -EINVAL;
 
-	gem_obj = drm_gem_object_lookup(file_priv, args->handle);
-	if (!gem_obj) {
-		DRM_DEBUG("Failed to look up GEM BO %d\n", args->handle);
-		return -EINVAL;
-	}
-	bo = to_v3d_bo(gem_obj);
-
-	ret = reservation_object_wait_timeout_rcu(bo->resv,
-						  true, true,
-						  timeout_jiffies);
-
-	if (ret == 0)
-		ret = -ETIME;
-	else if (ret > 0)
-		ret = 0;
+	ret = drm_gem_dma_resv_wait(file_priv, args->handle,
+					      true, timeout_jiffies);
 
 	/* Decrement the user's timeout, in case we got interrupted
 	 * such that the ioctl will be restarted.
@@ -477,6 +464,87 @@ v3d_wait_bo_ioctl(struct drm_device *dev, void *data,
 	drm_gem_object_put_unlocked(gem_obj);
 
 	return ret;
+}
+
+static int
+v3d_job_init(struct v3d_dev *v3d, struct drm_file *file_priv,
+	     struct v3d_job *job, void (*free)(struct kref *ref),
+	     u32 in_sync)
+{
+	struct dma_fence *in_fence = NULL;
+	int ret;
+
+	job->v3d = v3d;
+	job->free = free;
+
+	ret = pm_runtime_get_sync(v3d->dev);
+	if (ret < 0)
+		return ret;
+
+	xa_init_flags(&job->deps, XA_FLAGS_ALLOC);
+
+	ret = drm_syncobj_find_fence(file_priv, in_sync, 0, 0, &in_fence);
+	if (ret == -EINVAL)
+		goto fail;
+
+	ret = drm_gem_fence_array_add(&job->deps, in_fence);
+	if (ret)
+		goto fail;
+
+	kref_init(&job->refcount);
+
+	return 0;
+fail:
+	xa_destroy(&job->deps);
+	pm_runtime_put_autosuspend(v3d->dev);
+	return ret;
+}
+
+static int
+v3d_push_job(struct v3d_file_priv *v3d_priv,
+	     struct v3d_job *job, enum v3d_queue queue)
+{
+	int ret;
+
+	ret = drm_sched_job_init(&job->base, &v3d_priv->sched_entity[queue],
+				 v3d_priv);
+	if (ret)
+		return ret;
+
+	job->done_fence = dma_fence_get(&job->base.s_fence->finished);
+
+	/* put by scheduler job completion */
+	kref_get(&job->refcount);
+
+	drm_sched_entity_push_job(&job->base, &v3d_priv->sched_entity[queue]);
+
+	return 0;
+}
+
+static void
+v3d_attach_fences_and_unlock_reservation(struct drm_file *file_priv,
+					 struct v3d_job *job,
+					 struct ww_acquire_ctx *acquire_ctx,
+					 u32 out_sync,
+					 struct dma_fence *done_fence)
+{
+	struct drm_syncobj *sync_out;
+	int i;
+
+	for (i = 0; i < job->bo_count; i++) {
+		/* XXX: Use shared fences for read-only objects. */
+		dma_resv_add_excl_fence(job->bo[i]->resv,
+						  job->done_fence);
+	}
+
+	drm_gem_unlock_reservations(job->bo, job->bo_count, acquire_ctx);
+
+	/* Update the return sync object for the job */
+	sync_out = drm_syncobj_find(file_priv, out_sync);
+	if (sync_out) {
+		drm_syncobj_replace_fence(sync_out, done_fence);
+		drm_syncobj_put(sync_out);
+	}
 }
 
 /**

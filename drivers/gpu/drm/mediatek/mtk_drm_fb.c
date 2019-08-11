@@ -11,7 +11,9 @@
  * GNU General Public License for more details.
  */
 
-#include <drm/drmP.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-resv.h>
+
 #include <drm/drm_modeset_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem.h>
