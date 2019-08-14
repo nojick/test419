@@ -245,21 +245,6 @@ static int amdgpu_amdkfd_remove_eviction_fence(struct amdgpu_bo *bo,
 	new->shared_max = old->shared_max;
 	new->shared_count = k;
 
-	if (!ef) {
-		unsigned int count = old->shared_count - j;
-
-		/* Alloc memory for count number of eviction fence pointers.
-		 * Fill the ef_list array and ef_count
-		 */
-		*ef_list = kcalloc(count, sizeof(**ef_list), GFP_KERNEL);
-		*ef_count = count;
-
-		if (!*ef_list) {
-			kfree(new);
-			return -ENOMEM;
-		}
-	}
-
 	/* Install the new fence list, seqcount provides the barriers */
 	preempt_disable();
 	write_seqcount_begin(&resv->seq);
