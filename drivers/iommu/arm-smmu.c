@@ -57,7 +57,7 @@
 #include <linux/amba/bus.h>
 #include <linux/fsl/mc.h>
 
-#include "arm-smmu-regs.h"
+#include "arm-smmu.h"
 
 #define ARM_MMU500_ACTLR_CPRE		(1 << 1)
 
