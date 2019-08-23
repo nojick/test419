@@ -338,9 +338,10 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 		}
 	}
 
-	drm_panel_init(&panel->base);
-	panel->base.dev = dev;
-	panel->base.funcs = &panel_simple_funcs;
+	if (!of_get_display_timing(dev->of_node, "panel-timing", &dt))
+		panel_simple_parse_panel_timing_node(dev, panel, &dt);
+
+	drm_panel_init(&panel->base, dev, &panel_simple_funcs);
 
 	err = drm_panel_add(&panel->base);
 	if (err < 0)
