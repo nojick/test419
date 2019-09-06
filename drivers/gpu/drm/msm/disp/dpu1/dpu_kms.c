@@ -72,7 +72,7 @@ static int _dpu_danger_signal_status(struct seq_file *s,
 	struct dpu_danger_safe_status status;
 	int i;
 
-	if (!kms->dev || !kms->hw_mdp) {
+	if (!kms->hw_mdp) {
 		DPU_ERROR("invalid arg(s)\n");
 		return 0;
 	}
@@ -153,9 +153,6 @@ static int _dpu_debugfs_show_regset32(struct seq_file *s, void *data)
 		return 0;
 
 	dev = dpu_kms->dev;
-	if (!dev)
-		return 0;
-
 	priv = dev->dev_private;
 	base = dpu_kms->mmio + regset->offset;
 
@@ -274,9 +271,6 @@ static void dpu_kms_prepare_commit(struct msm_kms *kms,
 		return;
 	dpu_kms = to_dpu_kms(kms);
 	dev = dpu_kms->dev;
-
-	if (!dev)
-		return;
 	priv = dev->dev_private;
 
 	/* Call prepare_commit for all affected encoders */
@@ -457,10 +451,6 @@ static void _dpu_kms_drm_obj_destroy(struct dpu_kms *dpu_kms)
 	struct msm_drm_private *priv;
 	int i;
 
-	if (!dpu_kms->dev) {
-		DPU_ERROR("invalid dev\n");
-		return;
-	}
 	priv = dpu_kms->dev->dev_private;
 
 	for (i = 0; i < priv->num_crtcs; i++)
@@ -492,7 +482,6 @@ static int _dpu_kms_drm_obj_init(struct dpu_kms *dpu_kms)
 
 	int primary_planes_idx = 0, cursor_planes_idx = 0, i, ret;
 	int max_crtc_count;
-
 	dev = dpu_kms->dev;
 	priv = dev->dev_private;
 	catalog = dpu_kms->catalog;
@@ -572,8 +561,6 @@ static void _dpu_kms_hw_destroy(struct dpu_kms *dpu_kms)
 	int i;
 
 	dev = dpu_kms->dev;
-	if (!dev)
-		return;
 
 	if (dpu_kms->hw_intr)
 		dpu_hw_intr_destroy(dpu_kms->hw_intr);
@@ -792,11 +779,6 @@ static int dpu_kms_hw_init(struct msm_kms *kms)
 
 	dpu_kms = to_dpu_kms(kms);
 	dev = dpu_kms->dev;
-	if (!dev) {
-		DPU_ERROR("invalid device\n");
-		return rc;
-	}
-
 	priv = dev->dev_private;
 
 	atomic_set(&dpu_kms->bandwidth_ref, 0);
@@ -1049,11 +1031,6 @@ static int __maybe_unused dpu_runtime_suspend(struct device *dev)
 	struct dss_module_power *mp = &dpu_kms->mp;
 
 	ddev = dpu_kms->dev;
-	if (!ddev) {
-		DPU_ERROR("invalid drm_device\n");
-		return rc;
-	}
-
 	rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 	if (rc)
 		DPU_ERROR("clock disable failed rc:%d\n", rc);
@@ -1071,11 +1048,6 @@ static int __maybe_unused dpu_runtime_resume(struct device *dev)
 	struct dss_module_power *mp = &dpu_kms->mp;
 
 	ddev = dpu_kms->dev;
-	if (!ddev) {
-		DPU_ERROR("invalid drm_device\n");
-		return rc;
-	}
-
 	rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, true);
 	if (rc) {
 		DPU_ERROR("clock enable failed rc:%d\n", rc);
