@@ -40,13 +40,7 @@ enum dpu_perf_mode {
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv;
-
 	priv = crtc->dev->dev_private;
-	if (!priv->kms) {
-		DPU_ERROR("invalid kms\n");
-		return NULL;
-	}
-
 	return to_dpu_kms(priv->kms);
 }
 
@@ -119,7 +113,7 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid parameters\n");
 		return 0;
 	}
@@ -227,7 +221,7 @@ void dpu_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return;
 	}
@@ -300,7 +294,7 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return -EINVAL;
 	}

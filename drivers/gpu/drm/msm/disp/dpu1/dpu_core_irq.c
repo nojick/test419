@@ -63,8 +63,7 @@ static void dpu_core_irq_callback_handler(void *arg, int irq_idx)
 int dpu_core_irq_idx_lookup(struct dpu_kms *dpu_kms,
 		enum dpu_intr_type intr_type, u32 instance_idx)
 {
-	if (!dpu_kms || !dpu_kms->hw_intr ||
-			!dpu_kms->hw_intr->ops.irq_idx_lookup)
+	if (!dpu_kms->hw_intr || !dpu_kms->hw_intr->ops.irq_idx_lookup)
 		return -EINVAL;
 
 	return dpu_kms->hw_intr->ops.irq_idx_lookup(intr_type,
@@ -81,7 +80,7 @@ static int _dpu_core_irq_enable(struct dpu_kms *dpu_kms, int irq_idx)
 	unsigned long irq_flags;
 	int ret = 0, enable_count;
 
-	if (!dpu_kms || !dpu_kms->hw_intr ||
+	if (!dpu_kms->hw_intr ||
 			!dpu_kms->irq_obj.enable_counts ||
 			!dpu_kms->irq_obj.irq_counts) {
 		DPU_ERROR("invalid params\n");
@@ -122,7 +121,7 @@ int dpu_core_irq_enable(struct dpu_kms *dpu_kms, int *irq_idxs, u32 irq_count)
 {
 	int i, ret = 0, counts;
 
-	if (!dpu_kms || !irq_idxs || !irq_count) {
+	if (!irq_idxs || !irq_count) {
 		DPU_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -146,7 +145,7 @@ static int _dpu_core_irq_disable(struct dpu_kms *dpu_kms, int irq_idx)
 {
 	int ret = 0, enable_count;
 
-	if (!dpu_kms || !dpu_kms->hw_intr || !dpu_kms->irq_obj.enable_counts) {
+	if (!dpu_kms->hw_intr || !dpu_kms->irq_obj.enable_counts) {
 		DPU_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -177,7 +176,7 @@ int dpu_core_irq_disable(struct dpu_kms *dpu_kms, int *irq_idxs, u32 irq_count)
 {
 	int i, ret = 0, counts;
 
-	if (!dpu_kms || !irq_idxs || !irq_count) {
+	if (!irq_idxs || !irq_count) {
 		DPU_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -194,7 +193,7 @@ int dpu_core_irq_disable(struct dpu_kms *dpu_kms, int *irq_idxs, u32 irq_count)
 
 u32 dpu_core_irq_read(struct dpu_kms *dpu_kms, int irq_idx, bool clear)
 {
-	if (!dpu_kms || !dpu_kms->hw_intr ||
+	if (!dpu_kms->hw_intr ||
 			!dpu_kms->hw_intr->ops.get_interrupt_status)
 		return 0;
 
@@ -213,7 +212,7 @@ int dpu_core_irq_register_callback(struct dpu_kms *dpu_kms, int irq_idx,
 {
 	unsigned long irq_flags;
 
-	if (!dpu_kms || !dpu_kms->irq_obj.irq_cb_tbl) {
+	if (!dpu_kms->irq_obj.irq_cb_tbl) {
 		DPU_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -248,7 +247,7 @@ int dpu_core_irq_unregister_callback(struct dpu_kms *dpu_kms, int irq_idx,
 {
 	unsigned long irq_flags;
 
-	if (!dpu_kms || !dpu_kms->irq_obj.irq_cb_tbl) {
+	if (!dpu_kms->irq_obj.irq_cb_tbl) {
 		DPU_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -282,8 +281,7 @@ int dpu_core_irq_unregister_callback(struct dpu_kms *dpu_kms, int irq_idx,
 
 static void dpu_clear_all_irqs(struct dpu_kms *dpu_kms)
 {
-	if (!dpu_kms || !dpu_kms->hw_intr ||
-			!dpu_kms->hw_intr->ops.clear_all_irqs)
+	if (!dpu_kms->hw_intr || !dpu_kms->hw_intr->ops.clear_all_irqs)
 		return;
 
 	dpu_kms->hw_intr->ops.clear_all_irqs(dpu_kms->hw_intr);
@@ -291,8 +289,7 @@ static void dpu_clear_all_irqs(struct dpu_kms *dpu_kms)
 
 static void dpu_disable_all_irqs(struct dpu_kms *dpu_kms)
 {
-	if (!dpu_kms || !dpu_kms->hw_intr ||
-			!dpu_kms->hw_intr->ops.disable_all_irqs)
+	if (!dpu_kms->hw_intr || !dpu_kms->hw_intr->ops.disable_all_irqs)
 		return;
 
 	dpu_kms->hw_intr->ops.disable_all_irqs(dpu_kms->hw_intr);
