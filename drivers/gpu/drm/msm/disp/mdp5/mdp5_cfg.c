@@ -22,7 +22,7 @@ struct mdp5_cfg_handler {
 /* mdp5_cfg must be exposed (used in mdp5.xml.h) */
 const struct mdp5_cfg_hw *mdp5_cfg = NULL;
 
-const struct mdp5_cfg_hw msm8x74v1_config = {
+static const struct mdp5_cfg_hw msm8x74v1_config = {
 	.name = "msm8x74v1",
 	.mdp = {
 		.count = 1,
@@ -106,7 +106,7 @@ const struct mdp5_cfg_hw msm8x74v1_config = {
 	.max_clk = 200000000,
 };
 
-const struct mdp5_cfg_hw msm8x74v2_config = {
+static const struct mdp5_cfg_hw msm8x74v2_config = {
 	.name = "msm8x74",
 	.mdp = {
 		.count = 1,
@@ -188,7 +188,7 @@ const struct mdp5_cfg_hw msm8x74v2_config = {
 	.max_clk = 200000000,
 };
 
-const struct mdp5_cfg_hw apq8084_config = {
+static const struct mdp5_cfg_hw apq8084_config = {
 	.name = "apq8084",
 	.mdp = {
 		.count = 1,
@@ -283,7 +283,7 @@ const struct mdp5_cfg_hw apq8084_config = {
 	.max_clk = 320000000,
 };
 
-const struct mdp5_cfg_hw msm8x16_config = {
+static const struct mdp5_cfg_hw msm8x16_config = {
 	.name = "msm8x16",
 	.mdp = {
 		.count = 1,
@@ -350,7 +350,7 @@ const struct mdp5_cfg_hw msm8x16_config = {
 	.max_clk = 320000000,
 };
 
-const struct mdp5_cfg_hw msm8x94_config = {
+static const struct mdp5_cfg_hw msm8x94_config = {
 	.name = "msm8x94",
 	.mdp = {
 		.count = 1,
@@ -445,7 +445,7 @@ const struct mdp5_cfg_hw msm8x94_config = {
 	.max_clk = 400000000,
 };
 
-const struct mdp5_cfg_hw msm8x96_config = {
+static const struct mdp5_cfg_hw msm8x96_config = {
 	.name = "msm8x96",
 	.mdp = {
 		.count = 1,
@@ -553,7 +553,7 @@ const struct mdp5_cfg_hw msm8x96_config = {
 	.max_clk = 412500000,
 };
 
-const struct mdp5_cfg_hw msm8917_config = {
+static const struct mdp5_cfg_hw msm8917_config = {
 	.name = "msm8917",
 	.mdp = {
 		.count = 1,
@@ -638,7 +638,7 @@ const struct mdp5_cfg_hw msm8917_config = {
 	.max_clk = 320000000,
 };
 
-const struct mdp5_cfg_hw msm8998_config = {
+static const struct mdp5_cfg_hw msm8998_config = {
 	.name = "msm8998",
 	.mdp = {
 		.count = 1,
