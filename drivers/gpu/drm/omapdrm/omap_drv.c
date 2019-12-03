@@ -190,6 +190,30 @@ static int omap_modeset_init_properties(struct drm_device *dev)
 	return 0;
 }
 
+static int omap_display_id(struct omap_dss_device *output)
+{
+	struct device_node *node = NULL;
+
+	if (output->next) {
+		struct omap_dss_device *display;
+
+		display = omapdss_display_get(output);
+		node = display->dev->of_node;
+		omapdss_device_put(display);
+	} else if (output->bridge) {
+		struct drm_bridge *bridge = output->bridge;
+
+		while (drm_bridge_get_next_bridge(bridge))
+			bridge = drm_bridge_get_next_bridge(bridge);
+
+		node = bridge->of_node;
+	} else if (output->panel) {
+		node = output->panel->dev->of_node;
+	}
+
+	return node ? of_alias_get_id(node, "display") : -ENODEV;
+}
+
 static int omap_modeset_init(struct drm_device *dev)
 {
 	struct omap_drm_private *priv = dev->dev_private;
