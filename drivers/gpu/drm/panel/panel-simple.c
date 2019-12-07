@@ -95,9 +95,9 @@ static inline struct panel_simple *to_panel_simple(struct drm_panel *panel)
 	return container_of(panel, struct panel_simple, base);
 }
 
-static int panel_simple_get_fixed_modes(struct panel_simple *panel)
+static unsigned int panel_simple_get_timings_modes(struct panel_simple *panel,
+						   struct drm_connector *connector)
 {
-	struct drm_connector *connector = panel->base.connector;
 	struct drm_device *drm = panel->base.drm;
 	struct drm_display_mode *mode;
 	unsigned int i, num = 0;
@@ -128,6 +128,15 @@ static int panel_simple_get_fixed_modes(struct panel_simple *panel)
 		num++;
 	}
 
+	return num;
+}
+
+static unsigned int panel_simple_get_display_modes(struct panel_simple *panel,
+						   struct drm_connector *connector)
+{
+	struct drm_device *drm = panel->base.drm;
+	struct drm_display_mode *mode;
+	unsigned int i, num = 0;
 	for (i = 0; i < panel->desc->num_modes; i++) {
 		const struct drm_display_mode *m = &panel->desc->modes[i];
 
@@ -148,6 +157,44 @@ static int panel_simple_get_fixed_modes(struct panel_simple *panel)
 		drm_mode_probed_add(connector, mode);
 		num++;
 	}
+
+	return num;
+}
+
+static int panel_simple_get_non_edid_modes(struct panel_simple *panel,
+					   struct drm_connector *connector)
+{
+	struct drm_device *drm = panel->base.drm;
+	struct drm_display_mode *mode;
+	bool has_override = panel->override_mode.type;
+	unsigned int num = 0;
+
+	if (!panel->desc)
+		return 0;
+
+	if (has_override) {
+		mode = drm_mode_duplicate(drm, &panel->override_mode);
+		if (mode) {
+			drm_mode_probed_add(connector, mode);
+			num = 1;
+		} else {
+			dev_err(drm->dev, "failed to add override mode\n");
+		}
+	}
+
+	/* Only add timings if override was not there or failed to validate */
+	if (num == 0 && panel->desc->num_timings)
+		num = panel_simple_get_timings_modes(panel, connector);
+
+	/*
+	 * Only add fixed modes if timings/override added no mode.
+	 *
+	 * We should only ever have either the display timings specified
+	 * or a fixed mode. Anything else is rather bogus.
+	 */
+	WARN_ON(panel->desc->num_timings && panel->desc->num_modes);
+	if (num == 0)
+		num = panel_simple_get_display_modes(panel, connector);
 
 	connector->display_info.bpc = panel->desc->bpc;
 	connector->display_info.width_mm = panel->desc->size.width;
@@ -245,23 +292,25 @@ static int panel_simple_enable(struct drm_panel *panel)
 	return 0;
 }
 
-static int panel_simple_get_modes(struct drm_panel *panel)
+static int panel_simple_get_modes(struct drm_panel *panel,
+				  struct drm_connector *connector)
 {
 	struct panel_simple *p = to_panel_simple(panel);
 	int num = 0;
 
 	/* probe EDID if a DDC bus is available */
 	if (p->ddc) {
-		struct edid *edid = drm_get_edid(panel->connector, p->ddc);
-		drm_connector_update_edid_property(panel->connector, edid);
+		struct edid *edid = drm_get_edid(connector, p->ddc);
+
+		drm_connector_update_edid_property(connector, edid);
 		if (edid) {
-			num += drm_add_edid_modes(panel->connector, edid);
+			num += drm_add_edid_modes(connector, edid);
 			kfree(edid);
 		}
 	}
 
 	/* add hard-coded panel modes */
-	num += panel_simple_get_fixed_modes(p);
+	num += panel_simple_get_non_edid_modes(p, connector);
 
 	return num;
 }
@@ -968,90 +1017,6 @@ static const struct panel_desc dlc_dlc0700yzg_1 = {
 	.connector_type = DRM_MODE_CONNECTOR_LVDS,
 };
 
-<<<<<<< HEAD
-=======
-static const struct display_timing dlc_dlc1010gig_timing = {
-	.pixelclock = { 68900000, 71100000, 73400000 },
-	.hactive = { 1280, 1280, 1280 },
-	.hfront_porch = { 43, 53, 63 },
-	.hback_porch = { 43, 53, 63 },
-	.hsync_len = { 44, 54, 64 },
-	.vactive = { 800, 800, 800 },
-	.vfront_porch = { 5, 8, 11 },
-	.vback_porch = { 5, 8, 11 },
-	.vsync_len = { 5, 7, 11 },
-	.flags = DISPLAY_FLAGS_DE_HIGH,
-};
-
-static const struct panel_desc dlc_dlc1010gig = {
-	.timings = &dlc_dlc1010gig_timing,
-	.num_timings = 1,
-	.bpc = 8,
-	.size = {
-		.width = 216,
-		.height = 135,
-	},
-	.delay = {
-		.prepare = 60,
-		.enable = 150,
-		.disable = 100,
-		.unprepare = 60,
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
-};
-
-static const struct drm_display_mode edt_et035012dm6_mode = {
-	.clock = 6500,
-	.hdisplay = 320,
-	.hsync_start = 320 + 20,
-	.hsync_end = 320 + 20 + 30,
-	.htotal = 320 + 20 + 68,
-	.vdisplay = 240,
-	.vsync_start = 240 + 4,
-	.vsync_end = 240 + 4 + 4,
-	.vtotal = 240 + 4 + 4 + 14,
-	.vrefresh = 60,
-	.flags = DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NHSYNC,
-};
-
-static const struct panel_desc edt_et035012dm6 = {
-	.modes = &edt_et035012dm6_mode,
-	.num_modes = 1,
-	.bpc = 8,
-	.size = {
-		.width = 70,
-		.height = 52,
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X24,
-	.bus_flags = DRM_BUS_FLAG_DE_LOW | DRM_BUS_FLAG_PIXDATA_NEGEDGE,
-};
-
-static const struct drm_display_mode edt_etm0430g0dh6_mode = {
-	.clock = 9000,
-	.hdisplay = 480,
-	.hsync_start = 480 + 2,
-	.hsync_end = 480 + 2 + 41,
-	.htotal = 480 + 2 + 41 + 2,
-	.vdisplay = 272,
-	.vsync_start = 272 + 2,
-	.vsync_end = 272 + 2 + 10,
-	.vtotal = 272 + 2 + 10 + 2,
-	.vrefresh = 60,
-	.flags = DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
-};
-
-static const struct panel_desc edt_etm0430g0dh6 = {
-	.modes = &edt_etm0430g0dh6_mode,
-	.num_modes = 1,
-	.bpc = 6,
-	.size = {
-		.width = 95,
-		.height = 54,
-	},
-};
-
->>>>>>> 9a2654c0f62a (drm/panel: Add and fill drm_panel type field)
 static const struct drm_display_mode edt_et057090dhu_mode = {
 	.clock = 25175,
 	.hdisplay = 640,
