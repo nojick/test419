@@ -22,6 +22,7 @@
 #define REG_ADRENO_SKIP(_offset) [_offset] = REG_SKIP
 
 extern bool snapshot_debugbus;
+extern bool allow_vram_carveout;
 
 /**
  * adreno_regs: List of registers that are used in across all
