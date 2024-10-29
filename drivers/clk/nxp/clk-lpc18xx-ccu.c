@@ -142,7 +142,7 @@ static int lpc18xx_ccu_gate_endisable(struct clk_hw *hw, bool enable)
 	 * Divider field is write only, so divider stat field must
 	 * be read so divider field can be set accordingly.
 	 */
-	val = readl(gate->reg);
+	val = clk_readl(gate->reg);
 	if (val & LPC18XX_CCU_DIVSTAT)
 		val |= LPC18XX_CCU_DIV;
 
@@ -155,12 +155,12 @@ static int lpc18xx_ccu_gate_endisable(struct clk_hw *hw, bool enable)
 		 * and the next write should clear the RUN bit.
 		 */
 		val |= LPC18XX_CCU_AUTO;
-		writel(val, gate->reg);
+		clk_writel(val, gate->reg);
 
 		val &= ~LPC18XX_CCU_RUN;
 	}
 
-	writel(val, gate->reg);
+	clk_writel(val, gate->reg);
 
 	return 0;
 }

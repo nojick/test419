@@ -111,7 +111,7 @@ static struct clk_hw *clk_register_gpio(struct device *dev, const char *name,
 
 	init.name = name;
 	init.ops = clk_gpio_ops;
-	init.flags = flags;
+	init.flags = flags | CLK_IS_BASIC;
 	init.parent_names = parent_names;
 	init.num_parents = num_parents;
 
