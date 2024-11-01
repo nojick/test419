@@ -217,7 +217,8 @@ static const struct regmap_config tps65132_regmap_config = {
 	.wr_table	= &tps65132_no_reg_table,
 };
 
-static int tps65132_probe(struct i2c_client *client)
+static int tps65132_probe(struct i2c_client *client,
+			  const struct i2c_device_id *client_id)
 {
 	struct device *dev = &client->dev;
 	struct tps65132_regulator *tps;
@@ -263,6 +264,12 @@ static const struct i2c_device_id tps65132_id[] = {
 	{},
 };
 MODULE_DEVICE_TABLE(i2c, tps65132_id);
+
+static const struct of_device_id __maybe_unused tps65132_of_match[] = {
+	{ .compatible = "ti,tps65132" },
+	{},
+};
+MODULE_DEVICE_TABLE(of, tps65132_of_match);
 
 static struct i2c_driver tps65132_i2c_driver = {
 	.driver = {
