@@ -186,4 +186,7 @@ config DRM_PANEL_SITRONIX_ST7789V
 	  Say Y here if you want to enable support for the Sitronix
 	  ST7789V controller for 240x320 LCD panels
 
+config DRM_PANEL_XIAOMI_IDO_BOE_HX8394F
+	tristate "XIAOMI IDO HX8394F"
+
 endmenu
