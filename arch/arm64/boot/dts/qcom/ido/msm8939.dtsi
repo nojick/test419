@@ -1927,7 +1927,6 @@
 					      <&wcnss_smp2p_in 3 IRQ_TYPE_EDGE_RISING>;
 			interrupt-names = "wdog", "fatal", "ready", "handover", "stop-ack";
 
-			vddmx-supply = <&pm8916_l3>;
 			vddpx-supply = <&pm8916_l7>;
 
 			qcom,state = <&wcnss_smp2p_out 0>;
