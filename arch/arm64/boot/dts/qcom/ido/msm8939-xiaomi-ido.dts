@@ -169,7 +169,7 @@
         	vsp-supply = <&reg_lcd_pos>;
 		vsn-supply = <&reg_lcd_neg>;
 
-		backlight = <&backlight>;
+		//backlight = <&backlight>;
 		reset-gpios = <&msmgpio 25 GPIO_ACTIVE_LOW>;
 
 		port {
@@ -186,7 +186,7 @@
 };
 
 &dsi_phy0 {
-	vddio-supply = <&pm8916_l6>;
+	//vddio-supply = <&pm8916_l6>;
 	qcom,dsi-phy-regulator-ldo-mode;
 };
 
