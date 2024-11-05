@@ -232,9 +232,6 @@ struct drm_atomic_state *msm_atomic_state_alloc(struct drm_device *dev);
 void msm_atomic_state_clear(struct drm_atomic_state *state);
 void msm_atomic_state_free(struct drm_atomic_state *state);
 
-int msm_crtc_enable_vblank(struct drm_crtc *crtc);
-void msm_crtc_disable_vblank(struct drm_crtc *crtc);
-
 int msm_gem_init_vma(struct msm_gem_address_space *aspace,
 		struct msm_gem_vma *vma, int npages,
 		u64 range_start, u64 range_end);
