@@ -11,7 +11,10 @@
 #include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
+#include <linux/gpio/consumer.h>
 #include <linux/hdmi.h>
+
+#include <drm/drm_bridge.h>
 
 #include "msm_drv.h"
 #include "hdmi.xml.h"
@@ -22,10 +25,9 @@ struct hdmi_phy;
 struct hdmi_platform_config;
 
 struct hdmi_gpio_data {
-	int num;
+	struct gpio_desc *gpiod;
 	bool output;
 	int value;
-	const char *label;
 };
 
 struct hdmi_audio {
@@ -234,6 +236,7 @@ void msm_hdmi_bridge_destroy(struct drm_bridge *bridge);
 
 void msm_hdmi_connector_irq(struct drm_connector *connector);
 struct drm_connector *msm_hdmi_connector_init(struct hdmi *hdmi);
+int msm_hdmi_hpd_enable(struct drm_connector *connector);
 
 /*
  * i2c adapter for ddc:

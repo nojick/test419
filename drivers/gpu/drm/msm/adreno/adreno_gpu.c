@@ -26,6 +26,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 {
 	struct device *dev = &gpu->pdev->dev;
 	const struct firmware *fw;
+	const char *signed_fwname = NULL;
 	struct device_node *np, *mem_np;
 	struct resource r;
 	phys_addr_t mem_phys;
@@ -57,10 +58,44 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 		return ret;
 
 	mem_phys = r.start;
-	mem_size = resource_size(&r);
 
-	/* Request the MDT file for the firmware */
-	fw = adreno_request_fw(to_adreno_gpu(gpu), fwname);
+	/*
+	 * Check for a firmware-name property.  This is the new scheme
+	 * to handle firmware that may be signed with device specific
+	 * keys, allowing us to have a different zap fw path for different
+	 * devices.
+	 *
+	 * If the firmware-name property is found, we bypass the
+	 * adreno_request_fw() mechanism, because we don't need to handle
+	 * the /lib/firmware/qcom/... vs /lib/firmware/... case.
+	 *
+	 * If the firmware-name property is not found, for backwards
+	 * compatibility we fall back to the fwname from the gpulist
+	 * table.
+	 */
+	of_property_read_string_index(np, "firmware-name", 0, &signed_fwname);
+	if (signed_fwname) {
+		fwname = signed_fwname;
+		ret = request_firmware_direct(&fw, fwname, gpu->dev->dev);
+		if (ret)
+			fw = ERR_PTR(ret);
+	} else if (fwname) {
+		/* Request the MDT file from the default location: */
+		fw = adreno_request_fw(to_adreno_gpu(gpu), fwname);
+	} else {
+		/*
+		 * For new targets, we require the firmware-name property,
+		 * if a zap-shader is required, rather than falling back
+		 * to a firmware name specified in gpulist.
+		 *
+		 * Because the firmware is signed with a (potentially)
+		 * device specific key, having the name come from gpulist
+		 * was a bad idea, and is only provided for backwards
+		 * compatibility for older targets.
+		 */
+		return -ENODEV;
+	}
+
 	if (IS_ERR(fw)) {
 		DRM_DEV_ERROR(dev, "Unable to load %s\n", fwname);
 		return PTR_ERR(fw);
@@ -70,6 +105,13 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	mem_size = qcom_mdt_get_size(fw);
 	if (mem_size < 0) {
 		ret = mem_size;
+		goto out;
+	}
+
+	if (mem_size > resource_size(&r)) {
+		DRM_DEV_ERROR(dev,
+			"memory region is too small to load the MDT\n");
+		ret = -E2BIG;
 		goto out;
 	}
 
@@ -89,7 +131,7 @@ static int zap_shader_load_mdt(struct msm_gpu *gpu, const char *fwname,
 	 * not.  But since we've already gotten through adreno_request_fw()
 	 * we know which of the two cases it is:
 	 */
-	if (to_adreno_gpu(gpu)->fwloc == FW_LOCATION_LEGACY) {
+	if (signed_fwname || (to_adreno_gpu(gpu)->fwloc == FW_LOCATION_LEGACY)) {
 		ret = qcom_mdt_load(dev, fw, fwname, pasid,
 				mem_region, mem_phys, mem_size, NULL);
 	} else {
@@ -140,15 +182,24 @@ int adreno_zap_shader_load(struct msm_gpu *gpu, u32 pasid)
 		return -EPROBE_DEFER;
 	}
 
-	/* Each GPU has a target specific zap shader firmware name to use */
-	if (!adreno_gpu->info->zapfw) {
-		zap_available = false;
-		DRM_DEV_ERROR(&pdev->dev,
-			"Zap shader firmware file not specified for this target\n");
-		return -ENODEV;
-	}
-
 	return zap_shader_load_mdt(gpu, adreno_gpu->info->zapfw, pasid);
+}
+
+struct msm_gem_address_space *
+adreno_iommu_create_address_space(struct msm_gpu *gpu,
+		struct platform_device *pdev)
+{
+	struct iommu_domain *iommu = iommu_domain_alloc(&platform_bus_type);
+	struct msm_mmu *mmu = msm_iommu_new(&pdev->dev, iommu);
+	struct msm_gem_address_space *aspace;
+
+	aspace = msm_gem_address_space_create(mmu, "gpu", SZ_16M,
+		0xffffffff - SZ_16M);
+
+	if (IS_ERR(aspace) && !IS_ERR(mmu))
+		mmu->funcs->destroy(mmu);
+
+	return aspace;
 }
 
 int adreno_get_param(struct msm_gpu *gpu, uint32_t param, uint64_t *value)
@@ -187,6 +238,12 @@ int adreno_get_param(struct msm_gpu *gpu, uint32_t param, uint64_t *value)
 		return -EINVAL;
 	case MSM_PARAM_NR_RINGS:
 		*value = gpu->nr_rings;
+		return 0;
+	case MSM_PARAM_PP_PGTABLE:
+		*value = 0;
+		return 0;
+	case MSM_PARAM_FAULTS:
+		*value = gpu->global_faults;
 		return 0;
 	default:
 		DBG("%s: invalid param: %u", gpu->name, param);
@@ -335,41 +392,12 @@ int adreno_hw_init(struct msm_gpu *gpu)
 		if (!ring)
 			continue;
 
-		ret = msm_gem_get_and_pin_iova(ring->bo, gpu->aspace,
-			&ring->iova);
-		if (ret) {
-			ring->iova = 0;
-			DRM_DEV_ERROR(gpu->dev->dev,
-				"could not map ringbuffer %d: %d\n", i, ret);
-			return ret;
-		}
-
 		ring->cur = ring->start;
 		ring->next = ring->start;
 
 		/* reset completed fence seqno: */
-		ring->memptrs->fence = ring->seqno;
+		ring->memptrs->fence = ring->fctx->completed_fence;
 		ring->memptrs->rptr = 0;
-	}
-
-	/*
-	 * Setup REG_CP_RB_CNTL.  The same value is used across targets (with
-	 * the excpetion of A430 that disables the RPTR shadow) - the cacluation
-	 * for the ringbuffer size and block size is moved to msm_gpu.h for the
-	 * pre-processor to deal with and the A430 variant is ORed in here
-	 */
-	adreno_gpu_write(adreno_gpu, REG_ADRENO_CP_RB_CNTL,
-		MSM_GPU_RB_CNTL_DEFAULT |
-		(adreno_is_a430(adreno_gpu) ? AXXX_CP_RB_CNTL_NO_UPDATE : 0));
-
-	/* Setup ringbuffer address - use ringbuffer[0] for GPU init */
-	adreno_gpu_write64(adreno_gpu, REG_ADRENO_CP_RB_BASE,
-		REG_ADRENO_CP_RB_BASE_HI, gpu->rb[0]->iova);
-
-	if (!adreno_is_a430(adreno_gpu)) {
-		adreno_gpu_write64(adreno_gpu, REG_ADRENO_CP_RB_RPTR_ADDR,
-			REG_ADRENO_CP_RB_RPTR_ADDR_HI,
-			rbmemptr(gpu->rb[0], rptr));
 	}
 
 	return 0;
@@ -379,11 +407,8 @@ int adreno_hw_init(struct msm_gpu *gpu)
 static uint32_t get_rptr(struct adreno_gpu *adreno_gpu,
 		struct msm_ringbuffer *ring)
 {
-	if (adreno_is_a430(adreno_gpu))
-		return ring->memptrs->rptr = adreno_gpu_read(
-			adreno_gpu, REG_ADRENO_CP_RB_RPTR);
-	else
-		return ring->memptrs->rptr;
+	return ring->memptrs->rptr = adreno_gpu_read(
+		adreno_gpu, REG_ADRENO_CP_RB_RPTR);
 }
 
 struct msm_ringbuffer *adreno_active_ring(struct msm_gpu *gpu)
@@ -426,6 +451,7 @@ void adreno_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit,
 			/* ignore if there has not been a ctx switch: */
 			if (priv->lastctx == ctx)
 				break;
+			fallthrough;
 		case MSM_SUBMIT_CMD_BUF:
 			OUT_PKT3(ring, adreno_is_a4xx(adreno_gpu) ?
 				CP_INDIRECT_BUFFER_PFE : CP_INDIRECT_BUFFER_PFD, 2);
@@ -544,13 +570,17 @@ int adreno_gpu_state_get(struct msm_gpu *gpu, struct msm_gpu_state *state)
 				size = j + 1;
 
 		if (size) {
-			state->ring[i].data = kmalloc(size << 2, GFP_KERNEL);
+			state->ring[i].data = kvmalloc(size << 2, GFP_KERNEL);
 			if (state->ring[i].data) {
 				memcpy(state->ring[i].data, gpu->rb[i]->start, size << 2);
 				state->ring[i].data_size = size << 2;
 			}
 		}
 	}
+
+	/* Some targets prefer to collect their own registers */
+	if (!adreno_gpu->registers)
+		return 0;
 
 	/* Count the number of registers */
 	for (i = 0; adreno_gpu->registers[i] != ~0; i += 2)
@@ -583,7 +613,7 @@ void adreno_gpu_state_destroy(struct msm_gpu_state *state)
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(state->ring); i++)
-		kfree(state->ring[i].data);
+		kvfree(state->ring[i].data);
 
 	for (i = 0; state->bos && i < state->nr_bos; i++)
 		kvfree(state->bos[i].data);
@@ -613,34 +643,74 @@ int adreno_gpu_state_put(struct msm_gpu_state *state)
 
 #if defined(CONFIG_DEBUG_FS) || defined(CONFIG_DEV_COREDUMP)
 
-static void adreno_show_object(struct drm_printer *p, u32 *ptr, int len)
+static char *adreno_gpu_ascii85_encode(u32 *src, size_t len)
 {
+	void *buf;
+	size_t buf_itr = 0, buffer_size;
 	char out[ASCII85_BUFSZ];
-	long l, datalen, i;
+	long l;
+	int i;
 
-	if (!ptr || !len)
-		return;
+	if (!src || !len)
+		return NULL;
+
+	l = ascii85_encode_len(len);
 
 	/*
-	 * Only dump the non-zero part of the buffer - rarely will any data
-	 * completely fill the entire allocated size of the buffer
+	 * Ascii85 outputs either a 5 byte string or a 1 byte string. So we
+	 * account for the worst case of 5 bytes per dword plus the 1 for '\0'
 	 */
-	for (datalen = 0, i = 0; i < len >> 2; i++) {
-		if (ptr[i])
-			datalen = (i << 2) + 1;
-	}
+	buffer_size = (l * 5) + 1;
 
-	/* Skip printing the object if it is empty */
-	if (datalen == 0)
+	buf = kvmalloc(buffer_size, GFP_KERNEL);
+	if (!buf)
+		return NULL;
+
+	for (i = 0; i < l; i++)
+		buf_itr += scnprintf(buf + buf_itr, buffer_size - buf_itr, "%s",
+				ascii85_encode(src[i], out));
+
+	return buf;
+}
+
+/* len is expected to be in bytes */
+static void adreno_show_object(struct drm_printer *p, void **ptr, int len,
+		bool *encoded)
+{
+	if (!*ptr || !len)
 		return;
 
-	l = ascii85_encode_len(datalen);
+	if (!*encoded) {
+		long datalen, i;
+		u32 *buf = *ptr;
+
+		/*
+		 * Only dump the non-zero part of the buffer - rarely will
+		 * any data completely fill the entire allocated size of
+		 * the buffer.
+		 */
+		for (datalen = 0, i = 0; i < len >> 2; i++)
+			if (buf[i])
+				datalen = ((i + 1) << 2);
+
+		/*
+		 * If we reach here, then the originally captured binary buffer
+		 * will be replaced with the ascii85 encoded string
+		 */
+		*ptr = adreno_gpu_ascii85_encode(buf, datalen);
+
+		kvfree(buf);
+
+		*encoded = true;
+	}
+
+	if (!*ptr)
+		return;
 
 	drm_puts(p, "    data: !!ascii85 |\n");
 	drm_puts(p, "     ");
 
-	for (i = 0; i < l; i++)
-		drm_puts(p, ascii85_encode(ptr[i], out));
+	drm_puts(p, *ptr);
 
 	drm_puts(p, "\n");
 }
@@ -672,8 +742,8 @@ void adreno_show(struct msm_gpu *gpu, struct msm_gpu_state *state,
 		drm_printf(p, "    wptr: %d\n", state->ring[i].wptr);
 		drm_printf(p, "    size: %d\n", MSM_GPU_RINGBUFFER_SZ);
 
-		adreno_show_object(p, state->ring[i].data,
-			state->ring[i].data_size);
+		adreno_show_object(p, &state->ring[i].data,
+			state->ring[i].data_size, &state->ring[i].encoded);
 	}
 
 	if (state->bos) {
@@ -684,17 +754,19 @@ void adreno_show(struct msm_gpu *gpu, struct msm_gpu_state *state,
 				state->bos[i].iova);
 			drm_printf(p, "    size: %zd\n", state->bos[i].size);
 
-			adreno_show_object(p, state->bos[i].data,
-				state->bos[i].size);
+			adreno_show_object(p, &state->bos[i].data,
+				state->bos[i].size, &state->bos[i].encoded);
 		}
 	}
 
-	drm_puts(p, "registers:\n");
+	if (state->nr_registers) {
+		drm_puts(p, "registers:\n");
 
-	for (i = 0; i < state->nr_registers; i++) {
-		drm_printf(p, "  - { offset: 0x%04x, value: 0x%08x }\n",
-			state->registers[i * 2] << 2,
-			state->registers[(i * 2) + 1]);
+		for (i = 0; i < state->nr_registers; i++) {
+			drm_printf(p, "  - { offset: 0x%04x, value: 0x%08x }\n",
+				state->registers[i * 2] << 2,
+				state->registers[(i * 2) + 1]);
+		}
 	}
 }
 #endif
@@ -732,6 +804,9 @@ void adreno_dump(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	int i;
+
+	if (!adreno_gpu->registers)
+		return;
 
 	/* dump these out in a form that can be parsed by demsm: */
 	printk("IO:region %s 00000000 00020000\n", gpu->name);
@@ -771,10 +846,9 @@ static int adreno_get_legacy_pwrlevels(struct device *dev)
 	struct device_node *child, *node;
 	int ret;
 
-	node = of_find_compatible_node(dev->of_node, NULL,
-		"qcom,gpu-pwrlevels");
+	node = of_get_compatible_child(dev->of_node, "qcom,gpu-pwrlevels");
 	if (!node) {
-		DRM_DEV_ERROR(dev, "Could not find the GPU powerlevels\n");
+		DRM_DEV_DEBUG(dev, "Could not find the GPU powerlevels\n");
 		return -ENXIO;
 	}
 
@@ -793,10 +867,12 @@ static int adreno_get_legacy_pwrlevels(struct device *dev)
 			dev_pm_opp_add(dev, val, 0);
 	}
 
+	of_node_put(node);
+
 	return 0;
 }
 
-static int adreno_get_pwrlevels(struct device *dev,
+static void adreno_get_pwrlevels(struct device *dev,
 		struct msm_gpu *gpu)
 {
 	unsigned long freq = ULONG_MAX;
@@ -831,24 +907,6 @@ static int adreno_get_pwrlevels(struct device *dev,
 	}
 
 	DBG("fast_rate=%u, slow_rate=27000000", gpu->fast_rate);
-
-	/* Check for an interconnect path for the bus */
-	gpu->icc_path = of_icc_get(dev, "gfx-mem");
-	if (!gpu->icc_path) {
-		/*
-		 * Keep compatbility with device trees that don't have an
-		 * interconnect-names property.
-		 */
-		gpu->icc_path = of_icc_get(dev, NULL);
-	}
-	if (IS_ERR(gpu->icc_path))
-		gpu->icc_path = NULL;
-
-	gpu->ocmem_icc_path = of_icc_get(dev, "ocmem");
-	if (IS_ERR(gpu->ocmem_icc_path))
-		gpu->ocmem_icc_path = NULL;
-
-	return 0;
 }
 
 int adreno_gpu_ocmem_init(struct device *dev, struct adreno_gpu *adreno_gpu,
@@ -894,9 +952,11 @@ int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 		struct adreno_gpu *adreno_gpu,
 		const struct adreno_gpu_funcs *funcs, int nr_rings)
 {
-	struct adreno_platform_config *config = pdev->dev.platform_data;
+	struct device *dev = &pdev->dev;
+	struct adreno_platform_config *config = dev->platform_data;
 	struct msm_gpu_config adreno_gpu_config  = { 0 };
 	struct msm_gpu *gpu = &adreno_gpu->base;
+	int ret;
 
 	adreno_gpu->funcs = funcs;
 	adreno_gpu->info = adreno_info(config->rev);
@@ -905,37 +965,62 @@ int adreno_gpu_init(struct drm_device *drm, struct platform_device *pdev,
 	adreno_gpu->rev = config->rev;
 
 	adreno_gpu_config.ioname = "kgsl_3d0_reg_memory";
-	adreno_gpu_config.irqname = "kgsl_3d0_irq";
-
-	adreno_gpu_config.va_start = SZ_16M;
-	adreno_gpu_config.va_end = 0xffffffff;
-	/* maximum range of a2xx mmu */
-	if (adreno_is_a2xx(adreno_gpu))
-		adreno_gpu_config.va_end = SZ_16M + 0xfff * SZ_64K;
 
 	adreno_gpu_config.nr_rings = nr_rings;
 
-	adreno_get_pwrlevels(&pdev->dev, gpu);
+	adreno_get_pwrlevels(dev, gpu);
 
-	pm_runtime_set_autosuspend_delay(&pdev->dev,
+	pm_runtime_set_autosuspend_delay(dev,
 		adreno_gpu->info->inactive_period);
-	pm_runtime_use_autosuspend(&pdev->dev);
-	pm_runtime_enable(&pdev->dev);
+	pm_runtime_use_autosuspend(dev);
+	pm_runtime_enable(dev);
 
-	return msm_gpu_init(drm, pdev, &adreno_gpu->base, &funcs->base,
+	ret = msm_gpu_init(drm, pdev, &adreno_gpu->base, &funcs->base,
 			adreno_gpu->info->name, &adreno_gpu_config);
+	if (ret)
+		return ret;
+
+	/*
+	 * The legacy case, before "interconnect-names", only has a
+	 * single interconnect path which is equivalent to "gfx-mem"
+	 */
+	if (!of_find_property(dev->of_node, "interconnect-names", NULL)) {
+		gpu->icc_path = of_icc_get(dev, NULL);
+	} else {
+		gpu->icc_path = of_icc_get(dev, "gfx-mem");
+		gpu->ocmem_icc_path = of_icc_get(dev, "ocmem");
+	}
+
+	if (IS_ERR(gpu->icc_path)) {
+		ret = PTR_ERR(gpu->icc_path);
+		gpu->icc_path = NULL;
+		return ret;
+	}
+
+	if (IS_ERR(gpu->ocmem_icc_path)) {
+		ret = PTR_ERR(gpu->ocmem_icc_path);
+		gpu->ocmem_icc_path = NULL;
+		/* allow -ENODATA, ocmem icc is optional */
+		if (ret != -ENODATA)
+			return ret;
+	}
+
+	return 0;
 }
 
 void adreno_gpu_cleanup(struct adreno_gpu *adreno_gpu)
 {
 	struct msm_gpu *gpu = &adreno_gpu->base;
+	struct msm_drm_private *priv = gpu->dev->dev_private;
 	unsigned int i;
 
 	for (i = 0; i < ARRAY_SIZE(adreno_gpu->info->fw); i++)
 		release_firmware(adreno_gpu->fw[i]);
 
-	icc_put(gpu->icc_path);
-	icc_put(gpu->ocmem_icc_path);
+	pm_runtime_disable(&priv->gpu_pdev->dev);
 
 	msm_gpu_cleanup(&adreno_gpu->base);
+
+	icc_put(gpu->icc_path);
+	icc_put(gpu->ocmem_icc_path);
 }

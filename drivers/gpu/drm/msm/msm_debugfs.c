@@ -47,12 +47,8 @@ static int msm_gpu_release(struct inode *inode, struct file *file)
 	struct msm_gpu_show_priv *show_priv = m->private;
 	struct msm_drm_private *priv = show_priv->dev->dev_private;
 	struct msm_gpu *gpu = priv->gpu;
-	int ret;
 
-	ret = mutex_lock_interruptible(&show_priv->dev->struct_mutex);
-	if (ret)
-		return ret;
-
+	mutex_lock(&show_priv->dev->struct_mutex);
 	gpu->funcs->gpu_state_put(show_priv->state);
 	mutex_unlock(&show_priv->dev->struct_mutex);
 
@@ -69,7 +65,7 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 	struct msm_gpu_show_priv *show_priv;
 	int ret;
 
-	if (!gpu)
+	if (!gpu || !gpu->funcs->gpu_state_get)
 		return -ENODEV;
 
 	show_priv = kmalloc(sizeof(*show_priv), GFP_KERNEL);
@@ -78,7 +74,7 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
-		return ret;
+		goto free_priv;
 
 	pm_runtime_get_sync(&gpu->pdev->dev);
 	show_priv->state = gpu->funcs->gpu_state_get(gpu);
@@ -88,13 +84,20 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 
 	if (IS_ERR(show_priv->state)) {
 		ret = PTR_ERR(show_priv->state);
-		kfree(show_priv);
-		return ret;
+		goto free_priv;
 	}
 
 	show_priv->dev = dev;
 
-	return single_open(file, msm_gpu_show, show_priv);
+	ret = single_open(file, msm_gpu_show, show_priv);
+	if (ret)
+		goto free_priv;
+
+	return 0;
+
+free_priv:
+	kfree(show_priv);
+	return ret;
 }
 
 static const struct file_operations msm_gpu_fops = {
@@ -211,31 +214,20 @@ int msm_debugfs_late_init(struct drm_device *dev)
 	return ret;
 }
 
-int msm_debugfs_init(struct drm_minor *minor)
+void msm_debugfs_init(struct drm_minor *minor)
 {
 	struct drm_device *dev = minor->dev;
 	struct msm_drm_private *priv = dev->dev_private;
-	int ret;
 
-	ret = drm_debugfs_create_files(msm_debugfs_list,
-			ARRAY_SIZE(msm_debugfs_list),
-			minor->debugfs_root, minor);
-
-	if (ret) {
-		DRM_DEV_ERROR(dev->dev, "could not install msm_debugfs_list\n");
-		return ret;
-	}
+	drm_debugfs_create_files(msm_debugfs_list,
+				 ARRAY_SIZE(msm_debugfs_list),
+				 minor->debugfs_root, minor);
 
 	debugfs_create_file("gpu", S_IRUSR, minor->debugfs_root,
 		dev, &msm_gpu_fops);
 
-	if (priv->kms && priv->kms->funcs->debugfs_init) {
-		ret = priv->kms->funcs->debugfs_init(priv->kms, minor);
-		if (ret)
-			return ret;
-	}
-
-	return ret;
+	if (priv->kms && priv->kms->funcs->debugfs_init)
+		priv->kms->funcs->debugfs_init(priv->kms, minor);
 }
 #endif
 

@@ -1,13 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -32,7 +24,7 @@ static int _dpu_vbif_wait_for_xin_halt(struct dpu_hw_vbif *vbif, u32 xin_id)
 	int rc;
 
 	if (!vbif || !vbif->cap || !vbif->ops.get_halt_ctrl) {
-		DPU_ERROR("invalid arguments vbif %d\n", vbif != 0);
+		DPU_ERROR("invalid arguments vbif %d\n", vbif != NULL);
 		return -EINVAL;
 	}
 
@@ -114,7 +106,7 @@ static u32 _dpu_vbif_get_ot_limit(struct dpu_hw_vbif *vbif,
 	u32 val;
 
 	if (!vbif || !vbif->cap) {
-		DPU_ERROR("invalid arguments vbif %d\n", vbif != 0);
+		DPU_ERROR("invalid arguments vbif %d\n", vbif != NULL);
 		return -EINVAL;
 	}
 
@@ -162,10 +154,6 @@ void dpu_vbif_set_ot_limit(struct dpu_kms *dpu_kms,
 	u32 ot_lim;
 	int ret, i;
 
-	if (!dpu_kms) {
-		DPU_ERROR("invalid arguments\n");
-		return;
-	}
 	mdp = dpu_kms->hw_mdp;
 
 	for (i = 0; i < ARRAY_SIZE(dpu_kms->hw_vbif); i++) {
@@ -176,7 +164,7 @@ void dpu_vbif_set_ot_limit(struct dpu_kms *dpu_kms,
 
 	if (!vbif || !mdp) {
 		DPU_DEBUG("invalid arguments vbif %d mdp %d\n",
-				vbif != 0, mdp != 0);
+				vbif != NULL, mdp != NULL);
 		return;
 	}
 
@@ -222,7 +210,7 @@ void dpu_vbif_set_qos_remap(struct dpu_kms *dpu_kms,
 	const struct dpu_vbif_qos_tbl *qos_tbl;
 	int i;
 
-	if (!dpu_kms || !params || !dpu_kms->hw_mdp) {
+	if (!params || !dpu_kms->hw_mdp) {
 		DPU_ERROR("invalid arguments\n");
 		return;
 	}
@@ -273,11 +261,6 @@ void dpu_vbif_clear_errors(struct dpu_kms *dpu_kms)
 	struct dpu_hw_vbif *vbif;
 	u32 i, pnd, src;
 
-	if (!dpu_kms) {
-		DPU_ERROR("invalid argument\n");
-		return;
-	}
-
 	for (i = 0; i < ARRAY_SIZE(dpu_kms->hw_vbif); i++) {
 		vbif = dpu_kms->hw_vbif[i];
 		if (vbif && vbif->ops.clear_errors) {
@@ -294,11 +277,6 @@ void dpu_vbif_init_memtypes(struct dpu_kms *dpu_kms)
 {
 	struct dpu_hw_vbif *vbif;
 	int i, j;
-
-	if (!dpu_kms) {
-		DPU_ERROR("invalid argument\n");
-		return;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(dpu_kms->hw_vbif); i++) {
 		vbif = dpu_kms->hw_vbif[i];
@@ -321,7 +299,7 @@ void dpu_debugfs_vbif_init(struct dpu_kms *dpu_kms, struct dentry *debugfs_root)
 	entry = debugfs_create_dir("vbif", debugfs_root);
 
 	for (i = 0; i < dpu_kms->catalog->vbif_count; i++) {
-		struct dpu_vbif_cfg *vbif = &dpu_kms->catalog->vbif[i];
+		const struct dpu_vbif_cfg *vbif = &dpu_kms->catalog->vbif[i];
 
 		snprintf(vbif_name, sizeof(vbif_name), "%d", vbif->id);
 
@@ -340,7 +318,7 @@ void dpu_debugfs_vbif_init(struct dpu_kms *dpu_kms, struct dentry *debugfs_root)
 			(u32 *)&vbif->default_ot_wr_limit);
 
 		for (j = 0; j < vbif->dynamic_ot_rd_tbl.count; j++) {
-			struct dpu_vbif_dynamic_ot_cfg *cfg =
+			const struct dpu_vbif_dynamic_ot_cfg *cfg =
 					&vbif->dynamic_ot_rd_tbl.cfg[j];
 
 			snprintf(vbif_name, sizeof(vbif_name),
@@ -354,7 +332,7 @@ void dpu_debugfs_vbif_init(struct dpu_kms *dpu_kms, struct dentry *debugfs_root)
 		}
 
 		for (j = 0; j < vbif->dynamic_ot_wr_tbl.count; j++) {
-			struct dpu_vbif_dynamic_ot_cfg *cfg =
+			const struct dpu_vbif_dynamic_ot_cfg *cfg =
 					&vbif->dynamic_ot_wr_tbl.cfg[j];
 
 			snprintf(vbif_name, sizeof(vbif_name),

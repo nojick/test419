@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include "dsi_phy.h"
@@ -173,6 +165,24 @@ const struct msm_dsi_phy_cfg dsi_phy_28nm_hpm_cfgs = {
 		.init = msm_dsi_phy_init_common,
 	},
 	.io_start = { 0xfd922b00, 0xfd923100 },
+	.num_dsi_phy = 2,
+};
+
+const struct msm_dsi_phy_cfg dsi_phy_28nm_hpm_famb_cfgs = {
+	.type = MSM_DSI_PHY_28NM_HPM,
+	.src_pll_truthtable = { {true, true}, {false, true} },
+	.reg_cfg = {
+		.num = 1,
+		.regs = {
+			{"vddio", 100000, 100},
+		},
+	},
+	.ops = {
+		.enable = dsi_28nm_phy_enable,
+		.disable = dsi_28nm_phy_disable,
+		.init = msm_dsi_phy_init_common,
+	},
+	.io_start = { 0x1a94400, 0x1a96400 },
 	.num_dsi_phy = 2,
 };
 

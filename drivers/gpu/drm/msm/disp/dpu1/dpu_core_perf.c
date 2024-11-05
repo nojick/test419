@@ -1,13 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* Copyright (c) 2016-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -15,6 +7,7 @@
 #include <linux/debugfs.h>
 #include <linux/errno.h>
 #include <linux/mutex.h>
+#include <linux/pm_opp.h>
 #include <linux/sort.h>
 #include <linux/clk.h>
 #include <linux/bitmap.h>
@@ -40,35 +33,8 @@ enum dpu_perf_mode {
 static struct dpu_kms *_dpu_crtc_get_kms(struct drm_crtc *crtc)
 {
 	struct msm_drm_private *priv;
-
-	if (!crtc->dev || !crtc->dev->dev_private) {
-		DPU_ERROR("invalid device\n");
-		return NULL;
-	}
-
 	priv = crtc->dev->dev_private;
-	if (!priv || !priv->kms) {
-		DPU_ERROR("invalid kms\n");
-		return NULL;
-	}
-
 	return to_dpu_kms(priv->kms);
-}
-
-static bool _dpu_core_video_mode_intf_connected(struct drm_crtc *crtc)
-{
-	struct drm_crtc *tmp_crtc;
-
-	drm_for_each_crtc(tmp_crtc, crtc->dev) {
-		if ((dpu_crtc_get_intf_mode(tmp_crtc) == INTF_MODE_VIDEO) &&
-				tmp_crtc->enabled) {
-			DPU_DEBUG("video interface connected crtc:%d\n",
-				tmp_crtc->base.id);
-			return true;
-		}
-	}
-
-	return false;
 }
 
 static void _dpu_core_perf_calc_crtc(struct dpu_kms *kms,
@@ -113,7 +79,6 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 	u32 bw, threshold;
 	u64 bw_sum_of_intfs = 0;
 	enum dpu_crtc_client_type curr_client_type;
-	bool is_video_mode;
 	struct dpu_crtc_state *dpu_cstate;
 	struct drm_crtc *tmp_crtc;
 	struct dpu_kms *kms;
@@ -124,7 +89,7 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid parameters\n");
 		return 0;
 	}
@@ -163,11 +128,7 @@ int dpu_core_perf_crtc_check(struct drm_crtc *crtc,
 		bw = DIV_ROUND_UP_ULL(bw_sum_of_intfs, 1000);
 		DPU_DEBUG("calculated bandwidth=%uk\n", bw);
 
-		is_video_mode = dpu_crtc_get_intf_mode(crtc) == INTF_MODE_VIDEO;
-		threshold = (is_video_mode ||
-			_dpu_core_video_mode_intf_connected(crtc)) ?
-			kms->catalog->perf.max_bw_low :
-			kms->catalog->perf.max_bw_high;
+		threshold = kms->catalog->perf.max_bw_high;
 
 		DPU_DEBUG("final threshold bw limit = %d\n", threshold);
 
@@ -222,9 +183,7 @@ static int _dpu_core_perf_crtc_update_bus(struct dpu_kms *kms,
  */
 void dpu_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 {
-	struct drm_crtc *tmp_crtc;
 	struct dpu_crtc *dpu_crtc;
-	struct dpu_crtc_state *dpu_cstate;
 	struct dpu_kms *kms;
 
 	if (!crtc) {
@@ -233,29 +192,15 @@ void dpu_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return;
 	}
 
 	dpu_crtc = to_dpu_crtc(crtc);
-	dpu_cstate = to_dpu_crtc_state(crtc->state);
 
-	/* only do this for command mode rt client */
-	if (dpu_crtc_get_intf_mode(crtc) != INTF_MODE_CMD)
+	if (atomic_dec_return(&kms->bandwidth_ref) > 0)
 		return;
-
-	/*
-	 * If video interface present, cmd panel bandwidth cannot be
-	 * released.
-	 */
-	if (dpu_crtc_get_intf_mode(crtc) == INTF_MODE_CMD)
-		drm_for_each_crtc(tmp_crtc, crtc->dev) {
-			if (tmp_crtc->enabled &&
-				dpu_crtc_get_intf_mode(tmp_crtc) ==
-						INTF_MODE_VIDEO)
-				return;
-		}
 
 	/* Release the bandwidth */
 	if (kms->perf.enable_bw_release) {
@@ -274,7 +219,7 @@ static int _dpu_core_perf_set_core_clk_rate(struct dpu_kms *kms, u64 rate)
 		rate = core_clk->max_rate;
 
 	core_clk->rate = rate;
-	return msm_dss_clk_set_rate(core_clk, 1);
+	return dev_pm_opp_set_rate(&kms->pdev->dev, core_clk->rate);
 }
 
 static u64 _dpu_core_perf_get_core_clk_rate(struct dpu_kms *kms)
@@ -309,7 +254,6 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 	u64 clk_rate = 0;
 	struct dpu_crtc *dpu_crtc;
 	struct dpu_crtc_state *dpu_cstate;
-	struct msm_drm_private *priv;
 	struct dpu_kms *kms;
 	int ret;
 
@@ -319,11 +263,10 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 	}
 
 	kms = _dpu_crtc_get_kms(crtc);
-	if (!kms || !kms->catalog) {
+	if (!kms->catalog) {
 		DPU_ERROR("invalid kms\n");
 		return -EINVAL;
 	}
-	priv = kms->dev->dev_private;
 
 	dpu_crtc = to_dpu_crtc(crtc);
 	dpu_cstate = to_dpu_crtc_state(crtc->state);

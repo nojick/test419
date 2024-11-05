@@ -1,13 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2014-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #if !defined(_DPU_TRACE_H_) || defined(TRACE_HEADER_MULTI_READ)
@@ -98,27 +90,6 @@ TRACE_EVENT(dpu_perf_set_ot,
 			__entry->pnum, __entry->xin_id, __entry->rd_lim,
 			__entry->vbif_idx)
 )
-
-TRACE_EVENT(dpu_perf_update_bus,
-	TP_PROTO(int client, unsigned long long ab_quota,
-	unsigned long long ib_quota),
-	TP_ARGS(client, ab_quota, ib_quota),
-	TP_STRUCT__entry(
-			__field(int, client)
-			__field(u64, ab_quota)
-			__field(u64, ib_quota)
-	),
-	TP_fast_assign(
-			__entry->client = client;
-			__entry->ab_quota = ab_quota;
-			__entry->ib_quota = ib_quota;
-	),
-	TP_printk("Request client:%d ab=%llu ib=%llu",
-			__entry->client,
-			__entry->ab_quota,
-			__entry->ib_quota)
-)
-
 
 TRACE_EVENT(dpu_cmd_release_bw,
 	TP_PROTO(u32 crtc_id),
@@ -356,20 +327,18 @@ DEFINE_EVENT(dpu_enc_keyval_template, dpu_enc_trigger_start,
 );
 
 TRACE_EVENT(dpu_enc_atomic_check_flags,
-	TP_PROTO(uint32_t drm_id, unsigned int flags, int private_flags),
-	TP_ARGS(drm_id, flags, private_flags),
+	TP_PROTO(uint32_t drm_id, unsigned int flags),
+	TP_ARGS(drm_id, flags),
 	TP_STRUCT__entry(
 		__field(	uint32_t,		drm_id		)
 		__field(	unsigned int,		flags		)
-		__field(	int,			private_flags	)
 	),
 	TP_fast_assign(
 		__entry->drm_id = drm_id;
 		__entry->flags = flags;
-		__entry->private_flags = private_flags;
 	),
-	TP_printk("id=%u, flags=%u, private_flags=%d",
-		  __entry->drm_id, __entry->flags, __entry->private_flags)
+	TP_printk("id=%u, flags=%u",
+		  __entry->drm_id, __entry->flags)
 );
 
 DECLARE_EVENT_CLASS(dpu_enc_id_enable_template,
@@ -421,7 +390,7 @@ TRACE_EVENT(dpu_enc_rc,
 		__entry->rc_state = rc_state;
 		__assign_str(stage_str, stage);
 	),
-	TP_printk("%s: id:%u, sw_event:%d, idle_pc_supported:%s, rc_state:%d\n",
+	TP_printk("%s: id:%u, sw_event:%d, idle_pc_supported:%s, rc_state:%d",
 		  __get_str(stage_str), __entry->drm_id, __entry->sw_event,
 		  __entry->idle_pc_supported ? "true" : "false",
 		  __entry->rc_state)
@@ -844,48 +813,42 @@ TRACE_EVENT(dpu_plane_disable,
 );
 
 DECLARE_EVENT_CLASS(dpu_rm_iter_template,
-	TP_PROTO(uint32_t id, enum dpu_hw_blk_type type, uint32_t enc_id),
-	TP_ARGS(id, type, enc_id),
+	TP_PROTO(uint32_t id, uint32_t enc_id),
+	TP_ARGS(id, enc_id),
 	TP_STRUCT__entry(
 		__field(	uint32_t,		id	)
-		__field(	enum dpu_hw_blk_type,	type	)
 		__field(	uint32_t,		enc_id	)
 	),
 	TP_fast_assign(
 		__entry->id = id;
-		__entry->type = type;
 		__entry->enc_id = enc_id;
 	),
-	TP_printk("id:%d type:%d enc_id:%u", __entry->id, __entry->type,
-		  __entry->enc_id)
+	TP_printk("id:%d enc_id:%u", __entry->id, __entry->enc_id)
 );
 DEFINE_EVENT(dpu_rm_iter_template, dpu_rm_reserve_intf,
-	TP_PROTO(uint32_t id, enum dpu_hw_blk_type type, uint32_t enc_id),
-	TP_ARGS(id, type, enc_id)
+	TP_PROTO(uint32_t id, uint32_t enc_id),
+	TP_ARGS(id, enc_id)
 );
 DEFINE_EVENT(dpu_rm_iter_template, dpu_rm_reserve_ctls,
-	TP_PROTO(uint32_t id, enum dpu_hw_blk_type type, uint32_t enc_id),
-	TP_ARGS(id, type, enc_id)
+	TP_PROTO(uint32_t id, uint32_t enc_id),
+	TP_ARGS(id, enc_id)
 );
 
 TRACE_EVENT(dpu_rm_reserve_lms,
-	TP_PROTO(uint32_t id, enum dpu_hw_blk_type type, uint32_t enc_id,
-		 uint32_t pp_id),
-	TP_ARGS(id, type, enc_id, pp_id),
+	TP_PROTO(uint32_t id, uint32_t enc_id, uint32_t pp_id),
+	TP_ARGS(id, enc_id, pp_id),
 	TP_STRUCT__entry(
 		__field(	uint32_t,		id	)
-		__field(	enum dpu_hw_blk_type,	type	)
 		__field(	uint32_t,		enc_id	)
 		__field(	uint32_t,		pp_id	)
 	),
 	TP_fast_assign(
 		__entry->id = id;
-		__entry->type = type;
 		__entry->enc_id = enc_id;
 		__entry->pp_id = pp_id;
 	),
-	TP_printk("id:%d type:%d enc_id:%u pp_id:%u", __entry->id,
-		  __entry->type, __entry->enc_id, __entry->pp_id)
+	TP_printk("id:%d enc_id:%u pp_id:%u", __entry->id,
+		  __entry->enc_id, __entry->pp_id)
 );
 
 TRACE_EVENT(dpu_vbif_wait_xin_halt_fail,

@@ -96,40 +96,51 @@ out:
 	return ret;
 }
 
-static void mdp4_prepare_commit(struct msm_kms *kms, struct drm_atomic_state *state)
+static void mdp4_enable_commit(struct msm_kms *kms)
 {
 	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
+	mdp4_enable(mdp4_kms);
+}
+
+static void mdp4_disable_commit(struct msm_kms *kms)
+{
+	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
+	mdp4_disable(mdp4_kms);
+}
+
+static void mdp4_prepare_commit(struct msm_kms *kms, struct drm_atomic_state *state)
+{
 	int i;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *crtc_state;
-
-	mdp4_enable(mdp4_kms);
 
 	/* see 119ecb7fd */
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i)
 		drm_crtc_vblank_get(crtc);
 }
 
-static void mdp4_complete_commit(struct msm_kms *kms, struct drm_atomic_state *state)
+static void mdp4_flush_commit(struct msm_kms *kms, unsigned crtc_mask)
 {
-	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
-	int i;
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *crtc_state;
-
-	drm_atomic_helper_wait_for_vblanks(mdp4_kms->dev, state);
-
-	/* see 119ecb7fd */
-	for_each_new_crtc_in_state(state, crtc, crtc_state, i)
-		drm_crtc_vblank_put(crtc);
-
-	mdp4_disable(mdp4_kms);
+	/* TODO */
 }
 
-static void mdp4_wait_for_crtc_commit_done(struct msm_kms *kms,
-						struct drm_crtc *crtc)
+static void mdp4_wait_flush(struct msm_kms *kms, unsigned crtc_mask)
 {
-	mdp4_crtc_wait_for_commit_done(crtc);
+	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
+	struct drm_crtc *crtc;
+
+	for_each_crtc_mask(mdp4_kms->dev, crtc, crtc_mask)
+		mdp4_crtc_wait_for_commit_done(crtc);
+}
+
+static void mdp4_complete_commit(struct msm_kms *kms, unsigned crtc_mask)
+{
+	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
+	struct drm_crtc *crtc;
+
+	/* see 119ecb7fd */
+	for_each_crtc_mask(mdp4_kms->dev, crtc, crtc_mask)
+		drm_crtc_vblank_put(crtc);
 }
 
 static long mdp4_round_pixclk(struct msm_kms *kms, unsigned long rate,
@@ -146,10 +157,6 @@ static long mdp4_round_pixclk(struct msm_kms *kms, unsigned long rate,
 	}
 }
 
-static const char * const iommu_ports[] = {
-	"mdp_port0_cb0", "mdp_port1_cb0",
-};
-
 static void mdp4_destroy(struct msm_kms *kms)
 {
 	struct mdp4_kms *mdp4_kms = to_mdp4_kms(to_mdp_kms(kms));
@@ -158,11 +165,10 @@ static void mdp4_destroy(struct msm_kms *kms)
 
 	if (mdp4_kms->blank_cursor_iova)
 		msm_gem_unpin_iova(mdp4_kms->blank_cursor_bo, kms->aspace);
-	drm_gem_object_put_unlocked(mdp4_kms->blank_cursor_bo);
+	drm_gem_object_put(mdp4_kms->blank_cursor_bo);
 
 	if (aspace) {
-		aspace->mmu->funcs->detach(aspace->mmu,
-				iommu_ports, ARRAY_SIZE(iommu_ports));
+		aspace->mmu->funcs->detach(aspace->mmu);
 		msm_gem_address_space_put(aspace);
 	}
 
@@ -181,9 +187,12 @@ static const struct mdp_kms_funcs kms_funcs = {
 		.irq             = mdp4_irq,
 		.enable_vblank   = mdp4_enable_vblank,
 		.disable_vblank  = mdp4_disable_vblank,
+		.enable_commit   = mdp4_enable_commit,
+		.disable_commit  = mdp4_disable_commit,
 		.prepare_commit  = mdp4_prepare_commit,
+		.flush_commit    = mdp4_flush_commit,
+		.wait_flush      = mdp4_wait_flush,
 		.complete_commit = mdp4_complete_commit,
-		.wait_for_crtc_commit_done = mdp4_wait_for_crtc_commit_done,
 		.get_format      = mdp_get_format,
 		.round_pixclk    = mdp4_round_pixclk,
 		.destroy         = mdp4_destroy,
@@ -198,7 +207,8 @@ int mdp4_disable(struct mdp4_kms *mdp4_kms)
 	clk_disable_unprepare(mdp4_kms->clk);
 	if (mdp4_kms->pclk)
 		clk_disable_unprepare(mdp4_kms->pclk);
-	clk_disable_unprepare(mdp4_kms->lut_clk);
+	if (mdp4_kms->lut_clk)
+		clk_disable_unprepare(mdp4_kms->lut_clk);
 	if (mdp4_kms->axi_clk)
 		clk_disable_unprepare(mdp4_kms->axi_clk);
 
@@ -212,7 +222,8 @@ int mdp4_enable(struct mdp4_kms *mdp4_kms)
 	clk_prepare_enable(mdp4_kms->clk);
 	if (mdp4_kms->pclk)
 		clk_prepare_enable(mdp4_kms->pclk);
-	clk_prepare_enable(mdp4_kms->lut_clk);
+	if (mdp4_kms->lut_clk)
+		clk_prepare_enable(mdp4_kms->lut_clk);
 	if (mdp4_kms->axi_clk)
 		clk_prepare_enable(mdp4_kms->axi_clk);
 
@@ -464,12 +475,13 @@ struct msm_kms *mdp4_kms_init(struct drm_device *dev)
 	if (IS_ERR(mdp4_kms->pclk))
 		mdp4_kms->pclk = NULL;
 
-	// XXX if (rev >= MDP_REV_42) { ???
-	mdp4_kms->lut_clk = devm_clk_get(&pdev->dev, "lut_clk");
-	if (IS_ERR(mdp4_kms->lut_clk)) {
-		DRM_DEV_ERROR(dev->dev, "failed to get lut_clk\n");
-		ret = PTR_ERR(mdp4_kms->lut_clk);
-		goto fail;
+	if (mdp4_kms->rev >= 2) {
+		mdp4_kms->lut_clk = devm_clk_get(&pdev->dev, "lut_clk");
+		if (IS_ERR(mdp4_kms->lut_clk)) {
+			DRM_DEV_ERROR(dev->dev, "failed to get lut_clk\n");
+			ret = PTR_ERR(mdp4_kms->lut_clk);
+			goto fail;
+		}
 	}
 
 	mdp4_kms->axi_clk = devm_clk_get(&pdev->dev, "bus_clk");
@@ -480,7 +492,8 @@ struct msm_kms *mdp4_kms_init(struct drm_device *dev)
 	}
 
 	clk_set_rate(mdp4_kms->clk, config->max_clk);
-	clk_set_rate(mdp4_kms->lut_clk, config->max_clk);
+	if (mdp4_kms->lut_clk)
+		clk_set_rate(mdp4_kms->lut_clk, config->max_clk);
 
 	pm_runtime_enable(dev->dev);
 	mdp4_kms->rpm_enabled = true;
@@ -497,19 +510,20 @@ struct msm_kms *mdp4_kms_init(struct drm_device *dev)
 	mdelay(16);
 
 	if (config->iommu) {
-		aspace = msm_gem_address_space_create(&pdev->dev,
-				config->iommu, "mdp4");
+		struct msm_mmu *mmu = msm_iommu_new(&pdev->dev,
+			config->iommu);
+
+		aspace  = msm_gem_address_space_create(mmu,
+			"mdp4", 0x1000, 0x100000000 - 0x1000);
+
 		if (IS_ERR(aspace)) {
+			if (!IS_ERR(mmu))
+				mmu->funcs->destroy(mmu);
 			ret = PTR_ERR(aspace);
 			goto fail;
 		}
 
 		kms->aspace = aspace;
-
-		ret = aspace->mmu->funcs->attach(aspace->mmu, iommu_ports,
-				ARRAY_SIZE(iommu_ports));
-		if (ret)
-			goto fail;
 	} else {
 		DRM_DEV_INFO(dev->dev, "no iommu, fallback to phys "
 				"contig buffers for scanout\n");
@@ -522,7 +536,7 @@ struct msm_kms *mdp4_kms_init(struct drm_device *dev)
 		goto fail;
 	}
 
-	mdp4_kms->blank_cursor_bo = msm_gem_new(dev, SZ_16K, MSM_BO_WC);
+	mdp4_kms->blank_cursor_bo = msm_gem_new(dev, SZ_16K, MSM_BO_WC | MSM_BO_SCANOUT);
 	if (IS_ERR(mdp4_kms->blank_cursor_bo)) {
 		ret = PTR_ERR(mdp4_kms->blank_cursor_bo);
 		DRM_DEV_ERROR(dev->dev, "could not allocate blank-cursor bo: %d\n", ret);
@@ -557,10 +571,6 @@ static struct mdp4_platform_config *mdp4_get_config(struct platform_device *dev)
 	/* TODO: Chips that aren't apq8064 have a 200 Mhz max_clk */
 	config.max_clk = 266667000;
 	config.iommu = iommu_domain_alloc(&platform_bus_type);
-	if (config.iommu) {
-		config.iommu->geometry.aperture_start = 0x1000;
-		config.iommu->geometry.aperture_end = 0xffffffff;
-	}
 
 	return &config;
 }

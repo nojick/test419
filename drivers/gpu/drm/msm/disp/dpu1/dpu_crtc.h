@@ -73,12 +73,14 @@ struct dpu_crtc_smmu_state_data {
  * struct dpu_crtc_mixer: stores the map for each virtual pipeline in the CRTC
  * @hw_lm:	LM HW Driver context
  * @lm_ctl:	CTL Path HW driver context
+ * @lm_dspp:	DSPP HW driver context
  * @mixer_op_mode:	mixer blending operation mode
  * @flush_mask:	mixer flush mask for ctl, mixer and pipe
  */
 struct dpu_crtc_mixer {
 	struct dpu_hw_mixer *hw_lm;
 	struct dpu_hw_ctl *lm_ctl;
+	struct dpu_hw_dspp *hw_dspp;
 	u32 mixer_op_mode;
 	u32 flush_mask;
 };
@@ -238,17 +240,14 @@ void dpu_crtc_vblank_callback(struct drm_crtc *crtc);
 /**
  * dpu_crtc_commit_kickoff - trigger kickoff of the commit for this crtc
  * @crtc: Pointer to drm crtc object
- * @async: true if the commit is asynchronous, false otherwise
  */
-void dpu_crtc_commit_kickoff(struct drm_crtc *crtc, bool async);
+void dpu_crtc_commit_kickoff(struct drm_crtc *crtc);
 
 /**
  * dpu_crtc_complete_commit - callback signalling completion of current commit
  * @crtc: Pointer to drm crtc object
- * @old_state: Pointer to drm crtc old state object
  */
-void dpu_crtc_complete_commit(struct drm_crtc *crtc,
-		struct drm_crtc_state *old_state);
+void dpu_crtc_complete_commit(struct drm_crtc *crtc);
 
 /**
  * dpu_crtc_init - create a new crtc object

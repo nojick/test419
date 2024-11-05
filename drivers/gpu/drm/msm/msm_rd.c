@@ -29,8 +29,6 @@
  * or shader programs (if not emitted inline in cmdstream).
  */
 
-#ifdef CONFIG_DEBUG_FS
-
 #include <linux/circ_buf.h>
 #include <linux/debugfs.h>
 #include <linux/kfifo.h>
@@ -43,9 +41,11 @@
 #include "msm_gpu.h"
 #include "msm_gem.h"
 
-static bool rd_full = false;
+bool rd_full = false;
 MODULE_PARM_DESC(rd_full, "If true, $debugfs/.../rd will snapshot all buffer contents");
 module_param_named(rd_full, rd_full, bool, 0600);
+
+#ifdef CONFIG_DEBUG_FS
 
 enum rd_sect_type {
 	RD_NONE,
@@ -107,7 +107,9 @@ static void rd_write(struct msm_rd_state *rd, const void *buf, int sz)
 		char *fptr = &fifo->buf[fifo->head];
 		int n;
 
-		wait_event(rd->fifo_event, circ_space(&rd->fifo) > 0);
+		wait_event(rd->fifo_event, circ_space(&rd->fifo) > 0 || !rd->open);
+		if (!rd->open)
+			return;
 
 		/* Note that smp_load_acquire() is not strictly required
 		 * as CIRC_SPACE_TO_END() does not access the tail more
@@ -205,7 +207,10 @@ out:
 static int rd_release(struct inode *inode, struct file *file)
 {
 	struct msm_rd_state *rd = inode->i_private;
+
 	rd->open = false;
+	wake_up_all(&rd->fifo_event);
+
 	return 0;
 }
 
@@ -231,8 +236,6 @@ static void rd_cleanup(struct msm_rd_state *rd)
 static struct msm_rd_state *rd_init(struct drm_minor *minor, const char *name)
 {
 	struct msm_rd_state *rd;
-	struct dentry *ent;
-	int ret = 0;
 
 	rd = kzalloc(sizeof(*rd), GFP_KERNEL);
 	if (!rd)
@@ -245,20 +248,10 @@ static struct msm_rd_state *rd_init(struct drm_minor *minor, const char *name)
 
 	init_waitqueue_head(&rd->fifo_event);
 
-	ent = debugfs_create_file(name, S_IFREG | S_IRUGO,
-			minor->debugfs_root, rd, &rd_debugfs_fops);
-	if (!ent) {
-		DRM_ERROR("Cannot create /sys/kernel/debug/dri/%pd/%s\n",
-				minor->debugfs_root, name);
-		ret = -ENOMEM;
-		goto fail;
-	}
+	debugfs_create_file(name, S_IFREG | S_IRUGO, minor->debugfs_root, rd,
+			    &rd_debugfs_fops);
 
 	return rd;
-
-fail:
-	rd_cleanup(rd);
-	return ERR_PTR(ret);
 }
 
 int msm_rd_debugfs_init(struct drm_minor *minor)
@@ -305,13 +298,14 @@ void msm_rd_debugfs_cleanup(struct msm_drm_private *priv)
 
 static void snapshot_buf(struct msm_rd_state *rd,
 		struct msm_gem_submit *submit, int idx,
-		uint64_t iova, uint32_t size)
+		uint64_t iova, uint32_t size, bool full)
 {
 	struct msm_gem_object *obj = submit->bos[idx].obj;
+	unsigned offset = 0;
 	const char *buf;
 
 	if (iova) {
-		buf += iova - submit->bos[idx].iova;
+		offset = iova - submit->bos[idx].iova;
 	} else {
 		iova = submit->bos[idx].iova;
 		size = obj->base.size;
@@ -324,6 +318,9 @@ static void snapshot_buf(struct msm_rd_state *rd,
 	rd_write_section(rd, RD_GPUADDR,
 			(uint32_t[3]){ iova, size, iova >> 32 }, 12);
 
+	if (!full)
+		return;
+
 	/* But only dump the contents of buffers marked READ */
 	if (!(submit->bos[idx].flags & MSM_SUBMIT_BO_READ))
 		return;
@@ -332,15 +329,11 @@ static void snapshot_buf(struct msm_rd_state *rd,
 	if (IS_ERR(buf))
 		return;
 
+	buf += offset;
+
 	rd_write_section(rd, RD_BUFFER_CONTENTS, buf, size);
 
 	msm_gem_put_vaddr(&obj->base);
-}
-
-static bool
-should_dump(struct msm_gem_submit *submit, int idx)
-{
-	return rd_full || (submit->bos[idx].flags & MSM_SUBMIT_BO_DUMP);
 }
 
 /* called under struct_mutex */
@@ -364,7 +357,7 @@ void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
 		va_list args;
 
 		va_start(args, fmt);
-		n = vsnprintf(msg, sizeof(msg), fmt, args);
+		n = vscnprintf(msg, sizeof(msg), fmt, args);
 		va_end(args);
 
 		rd_write_section(rd, RD_CMD, msg, ALIGN(n, 4));
@@ -373,11 +366,11 @@ void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
 	rcu_read_lock();
 	task = pid_task(submit->pid, PIDTYPE_PID);
 	if (task) {
-		n = snprintf(msg, sizeof(msg), "%.*s/%d: fence=%u",
+		n = scnprintf(msg, sizeof(msg), "%.*s/%d: fence=%u",
 				TASK_COMM_LEN, task->comm,
 				pid_nr(submit->pid), submit->seqno);
 	} else {
-		n = snprintf(msg, sizeof(msg), "???/%d: fence=%u",
+		n = scnprintf(msg, sizeof(msg), "???/%d: fence=%u",
 				pid_nr(submit->pid), submit->seqno);
 	}
 	rcu_read_unlock();
@@ -385,18 +378,21 @@ void msm_rd_dump_submit(struct msm_rd_state *rd, struct msm_gem_submit *submit,
 	rd_write_section(rd, RD_CMD, msg, ALIGN(n, 4));
 
 	for (i = 0; i < submit->nr_bos; i++)
-		if (should_dump(submit, i))
-			snapshot_buf(rd, submit, i, 0, 0);
+		snapshot_buf(rd, submit, i, 0, 0, should_dump(submit, i));
 
 	for (i = 0; i < submit->nr_cmds; i++) {
-		uint64_t iova = submit->cmd[i].iova;
 		uint32_t szd  = submit->cmd[i].size; /* in dwords */
 
 		/* snapshot cmdstream bo's (if we haven't already): */
 		if (!should_dump(submit, i)) {
 			snapshot_buf(rd, submit, submit->cmd[i].idx,
-					submit->cmd[i].iova, szd * 4);
+					submit->cmd[i].iova, szd * 4, true);
 		}
+	}
+
+	for (i = 0; i < submit->nr_cmds; i++) {
+		uint64_t iova = submit->cmd[i].iova;
+		uint32_t szd  = submit->cmd[i].size; /* in dwords */
 
 		switch (submit->cmd[i].type) {
 		case MSM_SUBMIT_CMD_IB_TARGET_BUF:

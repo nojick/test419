@@ -26,7 +26,7 @@ struct msm_fbdev {
 	struct drm_framebuffer *fb;
 };
 
-static struct fb_ops msm_fb_ops = {
+static const struct fb_ops msm_fb_ops = {
 	.owner = THIS_MODULE,
 	DRM_FB_HELPER_DEFAULT_OPS,
 
@@ -112,13 +112,9 @@ static int msm_fbdev_create(struct drm_fb_helper *helper,
 	fbdev->fb = fb;
 	helper->fb = fb;
 
-	fbi->par = helper;
 	fbi->fbops = &msm_fb_ops;
 
-	strcpy(fbi->fix.id, "msm");
-
-	drm_fb_helper_fill_fix(fbi, fb->pitches[0], fb->format->depth);
-	drm_fb_helper_fill_var(fbi, helper, sizes->fb_width, sizes->fb_height);
+	drm_fb_helper_fill_info(fbi, helper, sizes);
 
 	dev->mode_config.fb_base = paddr;
 
@@ -164,15 +160,14 @@ struct drm_fb_helper *msm_fbdev_init(struct drm_device *dev)
 
 	drm_fb_helper_prepare(dev, helper, &msm_fb_helper_funcs);
 
-	ret = drm_fb_helper_init(dev, helper, priv->num_connectors);
+	ret = drm_fb_helper_init(dev, helper);
 	if (ret) {
 		DRM_DEV_ERROR(dev->dev, "could not init fbdev: ret=%d\n", ret);
 		goto fail;
 	}
 
-	ret = drm_fb_helper_single_add_all_connectors(helper);
-	if (ret)
-		goto fini;
+	/* the fw fb could be anywhere in memory */
+	drm_fb_helper_remove_conflicting_framebuffers(NULL, "msm", false);
 
 	ret = drm_fb_helper_initial_config(helper, 32);
 	if (ret)
