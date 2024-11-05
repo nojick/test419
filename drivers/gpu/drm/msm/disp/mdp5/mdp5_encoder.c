@@ -308,7 +308,6 @@ static int mdp5_encoder_atomic_check(struct drm_encoder *encoder,
 
 	mdp5_cstate->ctl = ctl;
 	mdp5_cstate->pipeline.intf = intf;
-	mdp5_cstate->defer_start = true;
 
 	/*
 	 * This is a bit awkward, but we want to flush the CTL and hit the
