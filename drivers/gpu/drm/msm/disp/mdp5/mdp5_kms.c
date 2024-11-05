@@ -719,7 +719,7 @@ struct msm_kms *mdp5_kms_init(struct drm_device *dev)
 		struct msm_mmu *mmu;
 
 		iommu_dev = &pdev->dev;
-		if (!dev_iommu_fwspec_get(iommu_dev))
+		if (!iommu_dev->iommu_fwspec)
 			iommu_dev = iommu_dev->parent;
 
 		mmu = msm_iommu_new(iommu_dev, config->platform.iommu);
