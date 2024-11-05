@@ -662,7 +662,7 @@ struct msm_kms *mdp5_kms_init(struct drm_device *dev)
 	dev->mode_config.max_width = 0xffff;
 	dev->mode_config.max_height = 0xffff;
 
-	dev->max_vblank_count = 0; /* max_vblank_count is set on each CRTC */
+	dev->max_vblank_count = 0xffffffff;
 	dev->vblank_disable_immediate = true;
 
 	return kms;

@@ -516,18 +516,6 @@ static void mdp5_crtc_atomic_disable(struct drm_crtc *crtc,
 	mdp5_crtc->enabled = false;
 }
 
-static void mdp5_crtc_vblank_on(struct drm_crtc *crtc)
-{
-	struct mdp5_crtc_state *mdp5_cstate = to_mdp5_crtc_state(crtc->state);
-	struct mdp5_interface *intf = mdp5_cstate->pipeline.intf;
-	u32 count;
-
-	count = intf->mode == MDP5_INTF_DSI_MODE_COMMAND ? 0 : 0xffffffff;
-	drm_crtc_set_max_vblank_count(crtc, count);
-
-	drm_crtc_vblank_on(crtc);
-}
-
 static void mdp5_crtc_atomic_enable(struct drm_crtc *crtc,
 				    struct drm_crtc_state *old_state)
 {
@@ -564,7 +552,7 @@ static void mdp5_crtc_atomic_enable(struct drm_crtc *crtc,
 	}
 
 	/* Restore vblank irq handling after power is enabled */
-	mdp5_crtc_vblank_on(crtc);
+	drm_crtc_vblank_on(crtc);
 
 	mdp5_crtc_mode_set_nofb(crtc);
 
