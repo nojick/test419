@@ -1552,9 +1552,6 @@ struct drm_plane *dpu_plane_init(struct drm_device *dev,
 			DRM_MODE_ROTATE_180 |
 			DRM_MODE_REFLECT_X |
 			DRM_MODE_REFLECT_Y);
-
-	drm_plane_enable_fb_damage_clips(plane);
-
 	/* success! finalize initialization */
 	drm_plane_helper_add(plane, &dpu_plane_helper_funcs);
 
