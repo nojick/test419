@@ -811,6 +811,7 @@
 		};
 
 		mdss: mdss@1a00000 {
+			status = "disabled";
 			compatible = "qcom,mdss";
 			reg = <0x01a00000 0x1000>,
 			      <0x01ac8000 0x3000>;
@@ -942,47 +943,50 @@
 			};
 		};
 
-		gpu@1c00000 {
+
+		gpu: gpu@1c00000 {
 			compatible = "qcom,adreno-405.0", "qcom,adreno";
 			reg = <0x01c00000 0x10000>;
 			reg-names = "kgsl_3d0_reg_memory";
 			interrupts = <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "kgsl_3d0_irq";
-			clock-names =
-			    "core",
-			    "iface",
-			    "mem",
-			    "mem_iface",
-			    "alt_mem_iface",
-			    "gtbu",
-			    "gfx3d";
-			clocks =
-			    <&gcc GCC_OXILI_GFX3D_CLK>,
-			    <&gcc GCC_OXILI_AHB_CLK>,
-			    <&gcc GCC_OXILI_GMEM_CLK>,
-			    <&gcc GCC_BIMC_GFX_CLK>,
-			    <&gcc GCC_BIMC_GPU_CLK>,
-			    <&gcc GCC_GFX_TBU_CLK>,
-			    <&gcc GFX3D_CLK_SRC>;
+			clock-names = "core",
+				      "iface",
+				      "mem",
+				      "mem_iface",
+				      "alt_mem_iface",
+				      "gfx3d",
+				      "rbbmtimer";
+			clocks = <&gcc GCC_OXILI_GFX3D_CLK>,
+				 <&gcc GCC_OXILI_AHB_CLK>,
+				 <&gcc GCC_OXILI_GMEM_CLK>,
+				 <&gcc GCC_BIMC_GFX_CLK>,
+				 <&gcc GCC_BIMC_GPU_CLK>,
+				 <&gcc GFX3D_CLK_SRC>,
+				 <&gcc GCC_OXILI_TIMER_CLK>;
 			power-domains = <&gcc OXILI_GDSC>;
-			operating-points-v2 = <&gpu_opp_table>;
+			operating-points-v2 = <&opp_table>;
 			iommus = <&gpu_iommu 1>, <&gpu_iommu 2>;
 
-			gpu_opp_table: opp-table {
+			opp_table: opp-table {
 				compatible = "operating-points-v2";
 
 				opp-550000000 {
 					opp-hz = /bits/ 64 <550000000>;
 				};
+
 				opp-465000000 {
 					opp-hz = /bits/ 64 <465000000>;
 				};
+
 				opp-400000000 {
 					opp-hz = /bits/ 64 <400000000>;
 				};
+
 				opp-220000000 {
 					opp-hz = /bits/ 64 <220000000>;
 				};
+
 				opp-19200000 {
 					opp-hz = /bits/ 64 <19200000>;
 				};
@@ -1682,7 +1686,7 @@
 		};
 
 		a53pll_c1: clock@b016000 {
-			compatible = "qcom,msm8939-a53pll-c1";
+			compatible = "qcom,msm8939-a53pll";
 			reg = <0xb016000 0x40>;
 			#clock-cells = <0>;
 			power-domains = <&rpmpd MSM8939_VDDCX_AO>;
@@ -1691,7 +1695,7 @@
 		};
 
 		a53pll_c0: clock@b116000 {
-			compatible = "qcom,msm8939-a53pll-c0";
+			compatible = "qcom,msm8939-a53pll";
 			reg = <0xb116000 0x40>;
 			#clock-cells = <0>;
 			power-domains = <&rpmpd MSM8939_VDDCX_AO>;
@@ -1700,7 +1704,7 @@
 		};
 
 		a53pll_cci: clock@b1d0000 {
-			compatible = "qcom,msm8939-a53pll-cci";
+			compatible = "qcom,msm8939-a53pll";
 			reg = <0xb1d0000 0x40>;
 			#clock-cells = <0>;
 			power-domains = <&rpmpd MSM8939_VDDCX_AO>;
