@@ -148,12 +148,12 @@ reset_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(reset_fops, NULL, reset_set, "%llx\n");
 
 
-void a5xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
+int a5xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
 {
 	struct drm_device *dev;
 
 	if (!minor)
-		return;
+		return 0;
 
 	dev = minor->dev;
 
@@ -163,4 +163,6 @@ void a5xx_debugfs_init(struct msm_gpu *gpu, struct drm_minor *minor)
 
 	debugfs_create_file("reset", S_IWUGO, minor->debugfs_root, dev,
 			    &reset_fops);
+
+	return 0;
 }

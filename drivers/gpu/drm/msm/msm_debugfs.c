@@ -214,10 +214,11 @@ int msm_debugfs_late_init(struct drm_device *dev)
 	return ret;
 }
 
-void msm_debugfs_init(struct drm_minor *minor)
+int msm_debugfs_init(struct drm_minor *minor)
 {
 	struct drm_device *dev = minor->dev;
 	struct msm_drm_private *priv = dev->dev_private;
+	int ret;
 
 	drm_debugfs_create_files(msm_debugfs_list,
 				 ARRAY_SIZE(msm_debugfs_list),
@@ -226,8 +227,13 @@ void msm_debugfs_init(struct drm_minor *minor)
 	debugfs_create_file("gpu", S_IRUSR, minor->debugfs_root,
 		dev, &msm_gpu_fops);
 
-	if (priv->kms && priv->kms->funcs->debugfs_init)
-		priv->kms->funcs->debugfs_init(priv->kms, minor);
+	if (priv->kms && priv->kms->funcs->debugfs_init) {
+		ret = priv->kms->funcs->debugfs_init(priv->kms, minor);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
 }
 #endif
 
