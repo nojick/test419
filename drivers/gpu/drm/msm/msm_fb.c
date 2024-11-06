@@ -121,7 +121,7 @@ struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 
 out_unref:
 	for (i = 0; i < n; i++)
-		drm_gem_object_put(bos[i]);
+		drm_gem_object_put_unlocked(bos[i]);
 	return ERR_PTR(ret);
 }
 
@@ -236,7 +236,7 @@ msm_alloc_stolen_fb(struct drm_device *dev, int w, int h, int p, uint32_t format
 		/* note: if fb creation failed, we can't rely on fb destroy
 		 * to unref the bo:
 		 */
-		drm_gem_object_put(bo);
+		drm_gem_object_put_unlocked(bo);
 		return ERR_CAST(fb);
 	}
 
