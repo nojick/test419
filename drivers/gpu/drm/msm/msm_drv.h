@@ -129,8 +129,9 @@ struct msm_display_info {
 /* Commit/Event thread specific structure */
 struct msm_drm_thread {
 	struct drm_device *dev;
+	struct task_struct *thread;
 	unsigned int crtc_id;
-	struct kthread_worker *worker;
+	struct kthread_worker worker;
 };
 
 struct msm_drm_private {
