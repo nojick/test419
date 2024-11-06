@@ -943,7 +943,7 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 		ret = 0;
 	}
 
-	drm_gem_object_put_locked(obj);
+	drm_gem_object_put(obj);
 
 unlock:
 	mutex_unlock(&dev->struct_mutex);
