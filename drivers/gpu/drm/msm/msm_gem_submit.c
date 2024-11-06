@@ -159,7 +159,7 @@ static void submit_unlock_unpin_bo(struct msm_gem_submit *submit,
 		msm_gem_unpin_iova(&msm_obj->base, submit->aspace);
 
 	if (submit->bos[i].flags & BO_LOCKED)
-		dma_resv_unlock(msm_obj->base.resv);
+		ww_mutex_unlock(&msm_obj->base.resv->lock);
 
 	if (backoff && !(submit->bos[i].flags & BO_VALID))
 		submit->bos[i].iova = 0;
@@ -182,8 +182,8 @@ retry:
 		contended = i;
 
 		if (!(submit->bos[i].flags & BO_LOCKED)) {
-			ret = dma_resv_lock_interruptible(msm_obj->base.resv,
-							  &submit->ticket);
+			ret = ww_mutex_lock_interruptible(&msm_obj->base.resv->lock,
+					&submit->ticket);
 			if (ret)
 				goto fail;
 			submit->bos[i].flags |= BO_LOCKED;
@@ -204,8 +204,8 @@ fail:
 	if (ret == -EDEADLK) {
 		struct msm_gem_object *msm_obj = submit->bos[contended].obj;
 		/* we lost out in a seqno race, lock and retry.. */
-		ret = dma_resv_lock_slow_interruptible(msm_obj->base.resv,
-						       &submit->ticket);
+		ret = ww_mutex_lock_slow_interruptible(&msm_obj->base.resv->lock,
+				&submit->ticket);
 		if (!ret) {
 			submit->bos[contended].flags |= BO_LOCKED;
 			slow_locked = contended;
