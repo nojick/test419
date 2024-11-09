@@ -169,7 +169,7 @@
         	vsp-supply = <&reg_lcd_pos>;
 		vsn-supply = <&reg_lcd_neg>;
 
-		backlight = <&backlight>;
+		//backlight = <&backlight>;
 		reset-gpios = <&msmgpio 25 GPIO_ACTIVE_LOW>;
 
 		port {
@@ -186,7 +186,6 @@
 };
 
 &dsi_phy0 {
-	vddio-supply = <&pm8916_l6>;
 	qcom,dsi-phy-regulator-ldo-mode;
 };
 
@@ -274,6 +273,7 @@
 		pm8916_l2: l2 {
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
+			regulator-always-on; /* Needed for LPDDR RAM */
 		};
 
 		pm8916_l4: l4 {
@@ -284,6 +284,7 @@
 		pm8916_l5: l5 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
+			regulator-always-on; /* Needed for most digital I/O */
 		};
 
 		pm8916_l6: l6 {
@@ -295,6 +296,7 @@
 		pm8916_l7: l7 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
 		};
 
 		pm8916_l8: l8 {
