@@ -163,7 +163,6 @@
 	panel@0 {
 		compatible = "xiaomi,hx8394f-boe";
 		reg = <0>;
-		vddio-supply = <&pm8916_l6>;
 
         	vsp-supply = <&reg_lcd_pos>;
 		vsn-supply = <&reg_lcd_neg>;
