@@ -21,7 +21,7 @@
 
 	chosen {
 		stdout-path = "serial0";
-		bootargs = "fbcon=nodefer earlycon=tty0 console=tty0 drm.debug=0x1ff";
+		bootargs = "fbcon=nodefer earlycon=tty0 console=tty0";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
