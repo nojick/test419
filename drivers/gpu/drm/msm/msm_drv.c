@@ -21,6 +21,7 @@
 #include "msm_drv.h"
 #include "msm_debugfs.h"
 #include "msm_fence.h"
+#include "msm_gem.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
 #include "adreno/adreno_gpu.h"
@@ -33,9 +34,11 @@
  * - 1.3.0 - adds GMEM_BASE + NR_RINGS params, SUBMITQUEUE_NEW +
  *           SUBMITQUEUE_CLOSE ioctls, and MSM_INFO_IOVA flag for
  *           MSM_GEM_INFO ioctl.
+ * - 1.4.0 - softpin, MSM_RELOC_BO_DUMP, and GEM_INFO support to set/get
+ *           GEM object's debug name
  */
 #define MSM_VERSION_MAJOR	1
-#define MSM_VERSION_MINOR	3
+#define MSM_VERSION_MINOR	4
 #define MSM_VERSION_PATCHLEVEL	0
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
@@ -491,6 +494,7 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 	if (IS_ERR(kms)) {
 		DRM_DEV_ERROR(dev, "failed to load kms\n");
 		ret = PTR_ERR(kms);
+		priv->kms = NULL;
 		goto err_msm_uninit;
 	}
 
@@ -669,7 +673,11 @@ static int msm_irq_postinstall(struct drm_device *dev)
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_kms *kms = priv->kms;
 	BUG_ON(!kms);
-	return kms->funcs->irq_postinstall(kms);
+
+	if (kms->funcs->irq_postinstall)
+		return kms->funcs->irq_postinstall(kms);
+
+	return 0;
 }
 
 static void msm_irq_uninstall(struct drm_device *dev)
@@ -806,23 +814,66 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 {
 	struct drm_msm_gem_info *args = data;
 	struct drm_gem_object *obj;
-	int ret = 0;
+	struct msm_gem_object *msm_obj;
+	int i, ret = 0;
 
-	if (args->flags & ~MSM_INFO_FLAGS)
+	if (args->pad)
 		return -EINVAL;
+
+	switch (args->info) {
+	case MSM_INFO_GET_OFFSET:
+	case MSM_INFO_GET_IOVA:
+		/* value returned as immediate, not pointer, so len==0: */
+		if (args->len)
+			return -EINVAL;
+		break;
+	case MSM_INFO_SET_NAME:
+	case MSM_INFO_GET_NAME:
+		break;
+	default:
+		return -EINVAL;
+	}
 
 	obj = drm_gem_object_lookup(file, args->handle);
 	if (!obj)
 		return -ENOENT;
 
-	if (args->flags & MSM_INFO_IOVA) {
-		uint64_t iova;
+	msm_obj = to_msm_bo(obj);
 
-		ret = msm_ioctl_gem_info_iova(dev, obj, &iova);
-		if (!ret)
-			args->offset = iova;
-	} else {
-		args->offset = msm_gem_mmap_offset(obj);
+	switch (args->info) {
+	case MSM_INFO_GET_OFFSET:
+		args->value = msm_gem_mmap_offset(obj);
+		break;
+	case MSM_INFO_GET_IOVA:
+		ret = msm_ioctl_gem_info_iova(dev, obj, &args->value);
+		break;
+	case MSM_INFO_SET_NAME:
+		/* length check should leave room for terminating null: */
+		if (args->len >= sizeof(msm_obj->name)) {
+			ret = -EINVAL;
+			break;
+		}
+		ret = copy_from_user(msm_obj->name,
+			u64_to_user_ptr(args->value), args->len);
+		msm_obj->name[args->len] = '\0';
+		for (i = 0; i < args->len; i++) {
+			if (!isprint(msm_obj->name[i])) {
+				msm_obj->name[i] = '\0';
+				break;
+			}
+		}
+		break;
+	case MSM_INFO_GET_NAME:
+		if (args->value && (args->len < strlen(msm_obj->name))) {
+			ret = -EINVAL;
+			break;
+		}
+		args->len = strlen(msm_obj->name);
+		if (args->value) {
+			ret = copy_to_user(u64_to_user_ptr(args->value),
+					msm_obj->name, args->len);
+		}
+		break;
 	}
 
 	drm_gem_object_put_unlocked(obj);
@@ -1000,18 +1051,15 @@ static int msm_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
-	struct msm_kms *kms = priv->kms;
 
-	/* TODO: Use atomic helper suspend/resume */
-	if (kms && kms->funcs && kms->funcs->pm_suspend)
-		return kms->funcs->pm_suspend(dev);
-
-	drm_kms_helper_poll_disable(ddev);
+	if (WARN_ON(priv->pm_state))
+		drm_atomic_state_put(priv->pm_state);
 
 	priv->pm_state = drm_atomic_helper_suspend(ddev);
 	if (IS_ERR(priv->pm_state)) {
-		drm_kms_helper_poll_enable(ddev);
-		return PTR_ERR(priv->pm_state);
+		int ret = PTR_ERR(priv->pm_state);
+		DRM_ERROR("Failed to suspend dpu, %d\n", ret);
+		return ret;
 	}
 
 	return 0;
@@ -1021,16 +1069,16 @@ static int msm_pm_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
-	struct msm_kms *kms = priv->kms;
+	int ret;
 
-	/* TODO: Use atomic helper suspend/resume */
-	if (kms && kms->funcs && kms->funcs->pm_resume)
-		return kms->funcs->pm_resume(dev);
+	if (WARN_ON(!priv->pm_state))
+		return -ENOENT;
 
-	drm_atomic_helper_resume(ddev, priv->pm_state);
-	drm_kms_helper_poll_enable(ddev);
+	ret = drm_atomic_helper_resume(ddev, priv->pm_state);
+	if (!ret)
+		priv->pm_state = NULL;
 
-	return 0;
+	return ret;
 }
 #endif
 
@@ -1137,8 +1185,10 @@ static int add_components_mdp(struct device *mdp_dev,
 		if (!intf)
 			continue;
 
-		drm_of_component_match_add(master_dev, matchptr, compare_of,
-					   intf);
+		if (of_device_is_available(intf))
+			drm_of_component_match_add(master_dev, matchptr,
+						   compare_of, intf);
+
 		of_node_put(intf);
 	}
 
