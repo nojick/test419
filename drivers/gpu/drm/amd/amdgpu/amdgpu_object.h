@@ -41,7 +41,7 @@ struct amdgpu_bo_param {
 	u32				preferred_domain;
 	u64				flags;
 	enum ttm_bo_type		type;
-	struct dma_resv	*resv;
+	struct reservation_object	*resv;
 };
 
 /* bo virtual addresses in a vm */

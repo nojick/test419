@@ -23,7 +23,7 @@
  * Authors: Dave Airlie
  *          Alex Deucher
  */
-
+#include <drm/drmP.h>
 #include <drm/amdgpu_drm.h>
 #include "amdgpu.h"
 #include "amdgpu_i2c.h"
@@ -32,13 +32,11 @@
 #include "amdgpu_display.h"
 #include <asm/div64.h>
 
-#include <linux/pci.h>
 #include <linux/pm_runtime.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_fb_helper.h>
-#include <drm/drm_vblank.h>
 
 static void amdgpu_display_flip_callback(struct dma_fence *f,
 					 struct dma_fence_cb *cb)
@@ -190,12 +188,10 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
 		goto cleanup;
 	}
 
-	if (!adev->enable_virtual_display) {
-		r = amdgpu_bo_pin(new_abo, amdgpu_display_supported_domains(adev));
-		if (unlikely(r != 0)) {
-			DRM_ERROR("failed to pin new abo buffer before flip\n");
-			goto unreserve;
-		}
+	r = amdgpu_bo_pin(new_abo, amdgpu_display_supported_domains(adev));
+	if (unlikely(r != 0)) {
+		DRM_ERROR("failed to pin new abo buffer before flip\n");
+		goto unreserve;
 	}
 
 	r = amdgpu_ttm_alloc_gart(&new_abo->tbo);
@@ -204,7 +200,7 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
 		goto unpin;
 	}
 
-	r = dma_resv_get_fences_rcu(new_abo->tbo.base.resv, &work->excl,
+	r = reservation_object_get_fences_rcu(new_abo->tbo.resv, &work->excl,
 					      &work->shared_count,
 					      &work->shared);
 	if (unlikely(r != 0)) {
@@ -215,8 +211,7 @@ int amdgpu_display_crtc_page_flip_target(struct drm_crtc *crtc,
 	amdgpu_bo_get_tiling_flags(new_abo, &tiling_flags);
 	amdgpu_bo_unreserve(new_abo);
 
-	if (!adev->enable_virtual_display)
-		work->base = amdgpu_bo_gpu_offset(new_abo);
+	work->base = amdgpu_bo_gpu_offset(new_abo);
 	work->target_vblank = target - (uint32_t)drm_crtc_vblank_count(crtc) +
 		amdgpu_get_vblank_counter_kms(dev, work->crtc_id);
 
@@ -247,10 +242,9 @@ pflip_cleanup:
 		goto cleanup;
 	}
 unpin:
-	if (!adev->enable_virtual_display)
-		if (unlikely(amdgpu_bo_unpin(new_abo) != 0))
-			DRM_ERROR("failed to unpin new abo in error path\n");
-
+	if (unlikely(amdgpu_bo_unpin(new_abo) != 0)) {
+		DRM_ERROR("failed to unpin new abo in error path\n");
+	}
 unreserve:
 	amdgpu_bo_unreserve(new_abo);
 
@@ -632,14 +626,6 @@ int amdgpu_display_modeset_create_props(struct amdgpu_device *adev)
 					 "dither",
 					 amdgpu_dither_enum_list, sz);
 
-	if (amdgpu_device_has_dc_support(adev)) {
-		adev->mode_info.abm_level_property =
-			drm_property_create_range(adev->ddev, 0,
-						"abm level", 0, 4);
-		if (!adev->mode_info.abm_level_property)
-			return -ENOMEM;
-	}
-
 	return 0;
 }
 
@@ -864,12 +850,7 @@ int amdgpu_display_get_crtc_scanoutpos(struct drm_device *dev,
 	/* Inside "upper part" of vblank area? Apply corrective offset if so: */
 	if (in_vbl && (*vpos >= vbl_start)) {
 		vtotal = mode->crtc_vtotal;
-
-		/* With variable refresh rate displays the vpos can exceed
-		 * the vtotal value. Clamp to 0 to return -vbl_end instead
-		 * of guessing the remaining number of lines until scanout.
-		 */
-		*vpos = (*vpos < vtotal) ? (*vpos - vtotal) : 0;
+		*vpos = *vpos - vtotal;
 	}
 
 	/* Correct for shifted end of vbl at vbl_end. */
