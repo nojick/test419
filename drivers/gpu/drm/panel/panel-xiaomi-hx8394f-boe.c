@@ -235,7 +235,7 @@ static int hx8394f_boe_remove(struct mipi_dsi_device *dsi)
 		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
 
 	drm_panel_remove(&ctx->panel);
-	return 1;
+	return 0;
 }
 
 static const struct of_device_id hx8394f_boe_of_match[] = {
