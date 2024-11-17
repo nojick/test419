@@ -41,6 +41,23 @@ struct drm_display_mode;
 struct drm_mode_create_dumb;
 struct drm_printer;
 
+<<<<<<< HEAD
+/* driver capabilities and requirements mask */
+#define DRIVER_USE_AGP			0x1
+#define DRIVER_LEGACY			0x2
+#define DRIVER_PCI_DMA			0x8
+#define DRIVER_SG			0x10
+#define DRIVER_HAVE_DMA			0x20
+#define DRIVER_HAVE_IRQ			0x40
+#define DRIVER_IRQ_SHARED		0x80
+#define DRIVER_GEM			0x1000
+#define DRIVER_MODESET			0x2000
+#define DRIVER_PRIME			0x4000
+#define DRIVER_RENDER			0x8000
+#define DRIVER_ATOMIC			0x10000
+#define DRIVER_KMS_LEGACY_CONTEXT	0x20000
+#define DRIVER_SYNCOBJ                  0x40000
+=======
 /**
  * enum drm_driver_feature - feature flags
  *
@@ -61,12 +78,6 @@ enum drm_driver_feature {
 	 * Driver supports mode setting interfaces (KMS).
 	 */
 	DRIVER_MODESET			= BIT(1),
-	/**
-	 * @DRIVER_PRIME:
-	 *
-	 * Driver implements DRM PRIME buffer sharing.
-	 */
-	DRIVER_PRIME			= BIT(2),
 	/**
 	 * @DRIVER_RENDER:
 	 *
@@ -155,13 +166,14 @@ enum drm_driver_feature {
 	 */
 	DRIVER_KMS_LEGACY_CONTEXT	= BIT(31),
 };
+>>>>>>> 0424fdaf883a (drm/prime: Actually remove DRIVER_PRIME everywhere)
 
 /**
  * struct drm_driver - DRM driver structure
  *
- * This structure represent the common code for a family of cards. There will be
- * one &struct drm_device for each card present in this family. It contains lots
- * of vfunc entries, and a pile of those probably should be moved to more
+ * This structure represent the common code for a family of cards. There will
+ * one drm_device for each card present in this family. It contains lots of
+ * vfunc entries, and a pile of those probably should be moved to more
  * appropriate places like &drm_mode_config_funcs or into a new operations
  * structure for GEM drivers.
  */
@@ -673,10 +685,8 @@ struct drm_driver {
 	 * @dumb_map_offset:
 	 *
 	 * Allocate an offset in the drm device node's address space to be able to
-	 * memory map a dumb buffer.
-	 *
-	 * The default implementation is drm_gem_create_mmap_offset(). GEM based
-	 * drivers must not overwrite this.
+	 * memory map a dumb buffer. GEM-based drivers must use
+	 * drm_gem_create_mmap_offset() to implement this.
 	 *
 	 * Called by the user via ioctl.
 	 *
@@ -695,9 +705,6 @@ struct drm_driver {
 	 * won't be immediately freed if a framebuffer modeset object still uses it.
 	 *
 	 * Called by the user via ioctl.
-	 *
-	 * The default implementation is drm_gem_dumb_destroy(). GEM based drivers
-	 * must not overwrite this.
 	 *
 	 * Returns:
 	 *
@@ -728,12 +735,7 @@ struct drm_driver {
 	/** @date: driver date */
 	char *date;
 
-	/**
-	 * @driver_features:
-	 * Driver features, see &enum drm_driver_feature. Drivers can disable
-	 * some features on a per-instance basis using
-	 * &drm_device.driver_features.
-	 */
+	/** @driver_features: driver features */
 	u32 driver_features;
 
 	/**
@@ -800,10 +802,6 @@ void drm_dev_unplug(struct drm_device *dev);
  * Unplugging itself is singalled through drm_dev_unplug(). If a device is
  * unplugged, these two functions guarantee that any store before calling
  * drm_dev_unplug() is visible to callers of this function after it completes
- *
- * WARNING: This function fundamentally races against drm_dev_unplug(). It is
- * recommended that drivers instead use the underlying drm_dev_enter() and
- * drm_dev_exit() function pairs.
  */
 static inline bool drm_dev_is_unplugged(struct drm_device *dev)
 {
@@ -823,11 +821,11 @@ static inline bool drm_dev_is_unplugged(struct drm_device *dev)
  * @feature: feature flag
  *
  * This checks @dev for driver features, see &drm_driver.driver_features,
- * &drm_device.driver_features, and the various &enum drm_driver_feature flags.
+ * &drm_device.driver_features, and the various DRIVER_\* flags.
  *
  * Returns true if the @feature is supported, false otherwise.
  */
-static inline bool drm_core_check_feature(const struct drm_device *dev, u32 feature)
+static inline bool drm_core_check_feature(struct drm_device *dev, u32 feature)
 {
 	return dev->driver->driver_features & dev->driver_features & feature;
 }
