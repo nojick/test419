@@ -1930,7 +1930,6 @@
 			power-domains = <&rpmpd MSM8939_VDDCX>,
 					<&rpmpd MSM8939_VDDMX_AO>;
 			power-domain-names = "cx", "mx";
-			vddpx-supply = <&pm8916_l7>;
 
 			qcom,state = <&wcnss_smp2p_out 0>;
 			qcom,state-names = "stop";
