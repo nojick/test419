@@ -1952,7 +1952,7 @@
 			smd-edge {
 				interrupts = <0 142 1>;
 
-				qcom,ipc = <&apcs 8 17>;
+				qcom,ipc = <&apcs1 8 17>;
 				qcom,smd-edge = <6>;
 				qcom,remote-pid = <4>;
 
